@@ -1,0 +1,14 @@
+[run]
+branch = True
+
+source = 
+    ovenbird
+    tests
+    examples
+
+[report]
+exclude_lines = 
+    if verbose:
+    if self._verbose:
+    pragma: no cover
+    if __debug__
