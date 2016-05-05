@@ -54,8 +54,7 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
         raise NotImplementedError
 
     def results_munger(self, premunged_results):
-        # Chop off the first value which might be undefined.
-        return premunged_results[1:]
+        return premunged_results # [1:]
 
     def construct_and_simulate(
         self, sim_cycles, dut_factory, ref_factory, args, arg_types, 
@@ -228,7 +227,7 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
             args, self.default_arg_types)
 
         for signal in dut_results:
-            self.assertEqual(dut_results[signal], ref_results[signal])
+            self.assertEqual(dut_results[signal][1:], ref_results[signal][1:])
 
 
 class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests, 

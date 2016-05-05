@@ -68,16 +68,27 @@ def _vivado_generic_cosimulation(
 
     sim_object = SynchronousTest(dut_factory, ref_factory, args, arg_types, 
                                  period, custom_sources)
+    # We need to create the test data
+    myhdl_outputs = sim_object.cosimulate(cycles, vcd_name=vcd_name)
+
+    # StopSimulation might be been called, so we should handle that.
+    # Use the ref outputs, as that can't be None
+    # outputs_length is the number of cycles we use for the vivado 
+    # cosimulation
+    outputs_length = None
+    for each_signal in myhdl_outputs[1]:
+        _length = len(myhdl_outputs[1][each_signal])
+        if outputs_length is not None:
+            assert outputs_length == _length
+
+        outputs_length = _length
 
     # Two cycles are lost in the vivado simulation - one for the propagation
     # delay between reading and writing, and one because of differences in
     # the time definitions? Fence post issue?
     #
     # Is adding two to the number of cycles the right thing to do?
-    _cycles = cycles + 2
-
-    # We need to create the test data
-    sim_object.cosimulate(cycles, vcd_name=vcd_name)
+    _cycles = outputs_length + 2
 
     tmp_dir = tempfile.mkdtemp()
 
@@ -141,7 +152,7 @@ def _vivado_generic_cosimulation(
 
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
 
-            toVHDL.no_initial_values = False
+            toVHDL.initial_values = True
             convertible_top.convert(hdl='VHDL', path=tmp_dir)
 
         elif target_language == 'Verilog':
@@ -165,7 +176,7 @@ def _vivado_generic_cosimulation(
             for ip_object in ip_list:
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
 
-            toVerilog.no_initial_values = False
+            toVerilog.initial_values = True
             convertible_top.convert(hdl='Verilog', path=tmp_dir)
 
         else:
@@ -360,8 +371,10 @@ def _vivado_generic_cosimulation(
 
         for each_signal in ref_outputs:
             # Now only output the correct number of cycles
-            ref_outputs[each_signal] = ref_outputs[each_signal][:cycles]
-            dut_outputs[each_signal] = dut_outputs[each_signal][:cycles]
+            ref_outputs[each_signal] = (
+                ref_outputs[each_signal][:outputs_length])
+            dut_outputs[each_signal] = (
+                dut_outputs[each_signal][:outputs_length])
     
     finally:
 
