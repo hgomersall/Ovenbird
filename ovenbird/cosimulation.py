@@ -4,7 +4,7 @@ from veriutils.cosimulation import PERIOD
 
 import ovenbird
 
-from myhdl import * 
+from myhdl import *
 import myhdl
 from myhdl.conversion._toVHDL import _shortversion
 myhdl_vhdl_package_filename = "pck_myhdl_%s.vhd" % _shortversion
@@ -27,7 +27,7 @@ except ImportError:
     # Python 3
     from configparser import RawConfigParser
 
-__all__ = ['vivado_vhdl_cosimulation', 'vivado_verilog_cosimulation', 
+__all__ = ['vivado_vhdl_cosimulation', 'vivado_verilog_cosimulation',
            'VivadoError']
 
 _simulate_tcl_template = string.Template('''
@@ -56,24 +56,24 @@ class VivadoError(RuntimeError):
     pass
 
 def _vivado_generic_cosimulation(
-    target_language, cycles, dut_factory, ref_factory, args, 
+    target_language, cycles, dut_factory, ref_factory, args,
     arg_types, period, custom_sources, keep_temp_files, config_file,
     template_path_prefix, vcd_name):
 
     if ovenbird.VIVADO_EXECUTABLE is None:
         raise EnvironmentError('Vivado executable not in path')
-    
+
     config = RawConfigParser()
     config.read(config_file)
 
-    sim_object = SynchronousTest(dut_factory, ref_factory, args, arg_types, 
+    sim_object = SynchronousTest(dut_factory, ref_factory, args, arg_types,
                                  period, custom_sources)
     # We need to create the test data
     myhdl_outputs = sim_object.cosimulate(cycles, vcd_name=vcd_name)
 
     # StopSimulation might be been called, so we should handle that.
     # Use the ref outputs, as that can't be None
-    # outputs_length is the number of cycles we use for the vivado 
+    # outputs_length is the number of cycles we use for the vivado
     # cosimulation
     outputs_length = None
     for each_signal in myhdl_outputs[1]:
@@ -113,6 +113,9 @@ def _vivado_generic_cosimulation(
         project_name = 'tmp_project'
         project_path = os.path.join(tmp_dir, project_name)
 
+        # Firstly check the dut is convertible
+        dut_factory(**args).convert(hdl=target_language, path=tmp_dir)
+
         time = period * _cycles
 
         try:
@@ -123,7 +126,7 @@ def _vivado_generic_cosimulation(
         vhdl_files = []
         verilog_files = []
         ip_additional_hdl_files = []
-        
+
         load_and_configure_ips_tcl_string = ''
 
         if target_language == 'VHDL':
@@ -153,7 +156,21 @@ def _vivado_generic_cosimulation(
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
 
             toVHDL.initial_values = True
-            convertible_top.convert(hdl='VHDL', path=tmp_dir)
+
+            try:
+                convertible_top.convert(hdl='VHDL', path=tmp_dir)
+            except myhdl.ConversionError as e:
+
+                raise ovenbird.OvenbirdConversionError(
+                    'The convertible top from Veriutils failed to convert '
+                    'with the following error: %s\n'
+                    'The code that has been passed in for verification (i.e. '
+                    'that you wrote) has been verified as converting '
+                    'properly. This means there could be a problem with the '
+                    'way you set Veriutils up. Are all the signals defined '
+                    'correctly and the signal types set up correctly '
+                    '(importantly, all the outputs are defined as such)? '
+                    'Alternatively it could be a bug in Veriutils.')
 
         elif target_language == 'Verilog':
             try:
@@ -177,13 +194,26 @@ def _vivado_generic_cosimulation(
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
 
             toVerilog.initial_values = True
-            convertible_top.convert(hdl='Verilog', path=tmp_dir)
+            try:
+                convertible_top.convert(hdl='Verilog', path=tmp_dir)
+            except myhdl.ConversionError as e:
+
+                raise ovenbird.OvenbirdConversionError(
+                    'The convertible top from Veriutils failed to convert '
+                    'with the following error: %s\n'
+                    'The code that has been passed in for verification (i.e. '
+                    'that you wrote) has been verified as converting '
+                    'properly. This means there could be a problem with the '
+                    'way you set Veriutils up. Are all the signals defined '
+                    'correctly and the signal types set up correctly '
+                    '(importantly, all the outputs are defined as such)? '
+                    'Alternatively it could be a bug in Veriutils.')
 
         else:
             raise ValueError('Target language must be \'Verilog\' or '
                              '\'VHDL\'')
 
-        for each_hdl_file in (vhdl_files + verilog_files + 
+        for each_hdl_file in (vhdl_files + verilog_files +
                               ip_additional_hdl_files):
             # The files should all now exist
             if not os.path.exists(each_hdl_file):
@@ -216,9 +246,9 @@ def _vivado_generic_cosimulation(
             simulate_script_file.write(simulate_script)
 
         vivado_process = subprocess.Popen(
-            [ovenbird.VIVADO_EXECUTABLE, '-nolog', '-nojournal', '-mode', 
-             'batch', '-source', simulate_script_filename], 
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, 
+            [ovenbird.VIVADO_EXECUTABLE, '-nolog', '-nojournal', '-mode',
+             'batch', '-source', simulate_script_filename],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
 
         out, err = vivado_process.communicate()
@@ -226,7 +256,7 @@ def _vivado_generic_cosimulation(
         if err != '':
             if target_language == 'VHDL':
                 xvhdl_log_filename = os.path.join(
-                    tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1', 
+                    tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1',
                     'behav', 'xvhdl.log')
 
                 if xvhdl_log_filename in err:
@@ -240,7 +270,7 @@ def _vivado_generic_cosimulation(
 
             elif target_language == 'Verilog':
                 xvhdl_log_filename = os.path.join(
-                    tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1', 
+                    tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1',
                     'behav', 'xvlog.log')
 
                 if xvhdl_log_filename in err:
@@ -295,20 +325,20 @@ def _vivado_generic_cosimulation(
                             each_value = _each_value.signed()
                         else:
                             each_value = _each_value
-                    
+
                 except ValueError:
                     # Probably an undefined.
                     each_value = None
-                    
+
                 each_dut_outputs.append(each_value)
-            
+
             # add each per-signal list into a data structure that
             # can be easily turned into the correct output when it is not
             # possible to add it directly.
             if sig_container == 'interface':
                 output_name_list = each_signal.split('.')
 
-                # We have an interface, so group the recorded signals 
+                # We have an interface, so group the recorded signals
                 # of the interface together.
 
                 # FIXME Only one level of interface supported
@@ -317,7 +347,7 @@ def _vivado_generic_cosimulation(
                         each_dut_outputs)
 
             elif sig_container == 'list':
-                # We have a list                
+                # We have a list
                 parsed_header = re.search(
                     '(?P<list_name>.*)\[(?P<index>.*)\]', each_signal)
 
@@ -344,14 +374,14 @@ def _vivado_generic_cosimulation(
             for each_list_out in zip(*ordered_siglist_output.values()):
                 new_dut_output.append(list(each_list_out))
 
-            dut_outputs[each_siglist] = new_dut_output            
+            dut_outputs[each_siglist] = new_dut_output
 
         for each_interface in interface_outputs:
 
             attr_names = interface_outputs[each_interface].keys()
 
             reordered_interface_outputs =  zip(
-                *(interface_outputs[each_interface][key] for 
+                *(interface_outputs[each_interface][key] for
                   key in attr_names))
 
             # We need to write the interface values to dut_outputs, but
@@ -375,7 +405,7 @@ def _vivado_generic_cosimulation(
                 ref_outputs[each_signal][:outputs_length])
             dut_outputs[each_signal] = (
                 dut_outputs[each_signal][:outputs_length])
-    
+
     finally:
 
         if not keep_temp_files:
@@ -388,8 +418,8 @@ def _vivado_generic_cosimulation(
 
 
 def vivado_vhdl_cosimulation(
-    cycles, dut_factory, ref_factory, args, arg_types, 
-    period=PERIOD, custom_sources=None, keep_temp_files=False, 
+    cycles, dut_factory, ref_factory, args, arg_types,
+    period=PERIOD, custom_sources=None, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using VHDL as the intermediate language.
@@ -397,28 +427,28 @@ def vivado_vhdl_cosimulation(
     This function has exactly the same interface as myhdl_cosimulation.
 
     The outputs should be identical to from myhdl_cosimulation except for
-    one important caveat: until values are initialised explicitly, they 
+    one important caveat: until values are initialised explicitly, they
     are recorded as undefined. Undefined values are set to None in the output.
 
     This is particularly noticeable in the case when an asynchronous reset
     is used. Care should be taken to handle the outputs appropriately.
 
-    By default, all the temporary files are cleaned up after use. This 
+    By default, all the temporary files are cleaned up after use. This
     behaviour can be turned off by settings ``keep_temp_files`` to ``True``.
     '''
 
     target_language = 'VHDL'
 
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
-        target_language, cycles, dut_factory, ref_factory, args, 
+        target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources, keep_temp_files,
         config_file, template_path_prefix, vcd_name)
 
     return dut_outputs, ref_outputs
 
 def vivado_verilog_cosimulation(
-    cycles, dut_factory, ref_factory, args, arg_types, 
-    period=PERIOD, custom_sources=None, keep_temp_files=False, 
+    cycles, dut_factory, ref_factory, args, arg_types,
+    period=PERIOD, custom_sources=None, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using Verilog as the intermediate language.
@@ -426,20 +456,20 @@ def vivado_verilog_cosimulation(
     This function has exactly the same interface as myhdl_cosimulation.
 
     The outputs should be identical to from myhdl_cosimulation except for
-    one important caveat: until values are initialised explicitly, they 
+    one important caveat: until values are initialised explicitly, they
     are recorded as undefined. Undefined values are set to None in the output.
 
     This is particularly noticeable in the case when an asynchronous reset
     is used. Care should be taken to handle the outputs appropriately.
 
-    By default, all the temporary files are cleaned up after use. This 
+    By default, all the temporary files are cleaned up after use. This
     behaviour can be turned off by settings ``keep_temp_files`` to ``True``.
     '''
 
     target_language = 'Verilog'
 
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
-        target_language, cycles, dut_factory, ref_factory, args, 
+        target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources, keep_temp_files,
         config_file, template_path_prefix, vcd_name)
 

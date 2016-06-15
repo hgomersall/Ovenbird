@@ -3,7 +3,7 @@ from tests.base_hdl_test import TestCase
 from veriutils import *
 from myhdl import (intbv, modbv, enum, Signal, ResetSignal, instance,
                    delay, always, always_seq, Simulation, StopSimulation,
-                   always_comb, block, BlockError)
+                   always_comb, block, BlockError, ConversionError)
 
 import unittest
 import copy
@@ -18,20 +18,20 @@ import mock
 
 from veriutils import SynchronousTest, myhdl_cosimulation, random_source
 
-from veriutils.tests.test_cosimulation import CosimulationTestMixin
+from veriutils.tests.test_convertible import ConvertibleCodeTestsMixin
 
 from ovenbird import (
     VIVADO_EXECUTABLE, vivado_verilog_cosimulation, vivado_vhdl_cosimulation,
-    VivadoError)
+    VivadoError, OvenbirdConversionError)
 
 
 @block
 def _broken_factory(test_input, test_output, reset, clock):
-    
+
     @always_seq(clock.posedge, reset=reset)
     def broken_identity():
         test_output.next = test_input
-    
+
     test_output.driven = 'reg'
     test_input.read = True
 
@@ -43,12 +43,12 @@ def _broken_factory(test_input, test_output, reset, clock):
     '''
     return broken_identity
 
-class VivadoCosimulationFunctionTests(CosimulationTestMixin):
+class VivadoCosimulationFunctionTests(ConvertibleCodeTestsMixin):
     # Common code for Vivado cosimulation tests.
 
     check_mocks = False
 
-    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory, 
+    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory,
                            args, arg_types, **kwargs):
 
         raise NotImplementedError
@@ -57,7 +57,7 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
         return premunged_results # [1:]
 
     def construct_and_simulate(
-        self, sim_cycles, dut_factory, ref_factory, args, arg_types, 
+        self, sim_cycles, dut_factory, ref_factory, args, arg_types,
         **kwargs):
 
         if VIVADO_EXECUTABLE is None:
@@ -67,9 +67,9 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
             sim_cycles, dut_factory, ref_factory, args, arg_types, **kwargs)
 
     def construct_simulate_and_munge(
-        self, sim_cycles, dut_factory, ref_factory, args, arg_types, 
+        self, sim_cycles, dut_factory, ref_factory, args, arg_types,
         **kwargs):
-        
+
         if VIVADO_EXECUTABLE is None:
             raise unittest.SkipTest('Vivado executable not in path')
 
@@ -85,6 +85,63 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
 
         return dut_outputs, ref_outputs
 
+    def test_conversion_error_of_user_code(self):
+        '''Conversion errors of user code should be presented to the user
+        as a ConversionError.
+        '''
+        @block
+        def failure_block(clock, input_signal, output_signal):
+
+            @always(clock.posedge)
+            def driver1():
+                output_signal.next = input_signal
+
+            @always(clock.posedge)
+            def driver2():
+                output_signal.next = input_signal
+
+            return driver1, driver2
+
+        args = {'clock': Signal(False),
+                'input_signal': Signal(False),
+                'output_signal': Signal(False)}
+
+        arg_types = {'clock': 'clock',
+                     'input_signal': 'custom',
+                     'output_signal': 'output'}
+
+        with self.assertRaises(ConversionError) as cm:
+            self.vivado_sim_wrapper(
+                10, failure_block, failure_block, args, arg_types)
+
+        # Make sure the asserion is exactly a ConversionError
+        self.assertIs(type(cm.exception), ConversionError)
+
+    def test_conversion_error_of_veriutils_convertible_top(self):
+        '''Conversion errors of the veriutils convertible top should be
+        presented as an OvenbirdConversionError.
+        '''
+        @block
+        def convertible_block(clock, input_signal, output_signal):
+
+            @always(clock.posedge)
+            def driver():
+                output_signal.next = input_signal
+
+            return driver
+
+        args = {'clock': Signal(False),
+                'input_signal': Signal(False),
+                'output_signal': Signal(False)}
+
+        arg_types = {'clock': 'clock',
+                     'input_signal': 'custom',
+                     'output_signal': 'custom'}
+
+        self.assertRaises(OvenbirdConversionError, self.vivado_sim_wrapper,
+                          10, convertible_block, convertible_block,
+                          args, arg_types)
+
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
                      'Vivado executable not in path')
@@ -92,7 +149,7 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
         '''It should be possible to keep the temporary files after simulation.
         '''
         sim_cycles = 30
-        
+
         # This method is slightly flaky - it's quite implementation dependent
         # and may break if mkdtemp is imported into the namespace of
         # cosimulation rather than tempfile, or if multiple calls are
@@ -114,10 +171,10 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
             # the test clean.
             sys.stdout = open(os.devnull, "w")
             self.vivado_sim_wrapper(
-                sim_cycles, self.identity_factory, self.identity_factory, 
+                sim_cycles, self.identity_factory, self.identity_factory,
                 self.default_args, self.default_arg_types,
                 keep_temp_files=True)
-            
+
             self.assertTrue(os.path.exists(dirs[0]))
 
         finally:
@@ -142,101 +199,22 @@ class VivadoCosimulationFunctionTests(CosimulationTestMixin):
             os.environ['PATH'] = ''
             self.assertRaisesRegex(
                 EnvironmentError, 'Vivado executable not in path',
-                self.vivado_sim_wrapper, sim_cycles, 
-                self.identity_factory, self.identity_factory, 
+                self.vivado_sim_wrapper, sim_cycles,
+                self.identity_factory, self.identity_factory,
                 self.default_args, self.default_arg_types)
 
         finally:
             os.environ['PATH'] = existing_PATH
             ovenbird.VIVADO_EXECUTABLE = existing_VIVADO_EXECUTABLE
 
-    def test_interface_case(self):
-        '''It should be possible to work with interfaces'''
 
-        args = self.default_args.copy()
-
-        min_val = -1000
-        max_val = 1000
-
-        class Interface(object):
-            def __init__(self):
-                # The attributes are sorted, so we need to run through
-                # them in the correct order. 'a', 'b', 'c', 'd' is fine.
-                self.a = Signal(intbv(0, min=min_val, max=max_val))
-                self.b = Signal(intbv(0, min=min_val, max=max_val))
-                self.c = Signal(intbv(0, min=0, max=max_val))                
-                self.d = Signal(bool(0))
-
-        @block
-        def identity_factory(test_input, test_output, reset, clock):
-            @always_seq(clock.posedge, reset=reset)
-            def identity():
-                test_output.a.next = test_input.a
-                test_output.b.next = test_input.b
-                test_output.c.next = test_input.c
-                test_output.d.next = test_input.d
-
-            return identity            
-
-        args['test_input'] = Interface()
-        args['test_output'] = Interface()
-
-        sim_cycles = 31
-
-        dut_results, ref_results = self.construct_simulate_and_munge(
-            sim_cycles, identity_factory, identity_factory, 
-            args, self.default_arg_types)
-
-        for signal in dut_results:
-            self.assertEqual(dut_results[signal], ref_results[signal])
-
-    def test_signal_list_arg(self):
-        '''It should be possible to work with lists of signals.
-
-        If the list contains non-signals, they are ignored.
-        '''
-
-        args = self.default_args.copy()
-
-        # We need to overwrite the parent implemented version in order
-        # to create a test that will convert properly.
-        N = 20
-        n = 8
-        input_signal_list = [
-            Signal(intbv(0, min=-2**n, max=2**n-1)) for _ in range(1, N+1)]
-
-        output_signal_list = [
-            Signal(intbv(0, min=-2**n, max=2**n-1)) for _ in range(1, N+1)]
-
-        @block
-        def identity_factory(test_input, test_output, reset, clock):
-            @always_seq(clock.posedge, reset=reset)
-            def identity():
-                for i in range(N):
-                    test_output[i].next = test_input[i]
-
-            return identity            
-
-        args['test_input'] = input_signal_list
-        args['test_output'] = output_signal_list
-
-        sim_cycles = 31
-
-        dut_results, ref_results = self.construct_simulate_and_munge(
-            sim_cycles, identity_factory, identity_factory, 
-            args, self.default_arg_types)
-
-        for signal in dut_results:
-            self.assertEqual(dut_results[signal][1:], ref_results[signal][1:])
-
-
-class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests, 
+class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests,
                                          TestCase):
     '''There should be an alternative version of the cosimulation function
     that runs the device under test through the Vivado VHDL simulator.
     '''
 
-    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory, 
+    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory,
                            args, arg_types, **kwargs):
 
         return vivado_vhdl_cosimulation(
@@ -247,14 +225,14 @@ class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests,
     def test_missing_hdl_file_raises(self):
         '''An EnvironmentError should be raised for a missing HDL file.
 
-        If the settings stipulate a HDL file should be included, but it 
+        If the settings stipulate a HDL file should be included, but it
         is not there, an EnvironmentError should be raised.
         '''
         self.identity_factory.vhdl_dependencies = ['a_missing_file.vhd']
         sim_cycles = 10
         self.assertRaisesRegex(
-            EnvironmentError, 'An expected HDL file is missing', 
-            self.vivado_sim_wrapper, sim_cycles, self.identity_factory, 
+            EnvironmentError, 'An expected HDL file is missing',
+            self.vivado_sim_wrapper, sim_cycles, self.identity_factory,
             self.identity_factory, self.default_args, self.default_arg_types)
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
@@ -266,17 +244,17 @@ class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests,
 
         self.assertRaisesRegex(
             VivadoError, 'Error running the Vivado VHDL simulator',
-            self.vivado_sim_wrapper, sim_cycles, 
-            _broken_factory, self.identity_factory, 
+            self.vivado_sim_wrapper, sim_cycles,
+            _broken_factory, self.identity_factory,
             self.default_args, self.default_arg_types)
 
-class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests, 
+class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests,
                                             TestCase):
     '''There should be an alternative version of the cosimulation function
     that runs the device under test through the Vivado verilog simulator.
     '''
 
-    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory, 
+    def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory,
                            args, arg_types, **kwargs):
 
         return vivado_verilog_cosimulation(
@@ -287,14 +265,14 @@ class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests,
     def test_missing_hdl_file_raises(self):
         '''An EnvironmentError should be raised for a missing HDL file.
 
-        If the settings stipulate a HDL file should be included, but it 
+        If the settings stipulate a HDL file should be included, but it
         is not there, an EnvironmentError should be raised.
         '''
         self.identity_factory.verilog_dependencies = ['a_missing_file.v']
         sim_cycles = 10
         self.assertRaisesRegex(
-            EnvironmentError, 'An expected HDL file is missing', 
-            self.vivado_sim_wrapper, sim_cycles, self.identity_factory, 
+            EnvironmentError, 'An expected HDL file is missing',
+            self.vivado_sim_wrapper, sim_cycles, self.identity_factory,
             self.identity_factory, self.default_args, self.default_arg_types)
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
@@ -306,6 +284,6 @@ class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests,
 
         self.assertRaisesRegex(
             VivadoError, 'Error running the Vivado Verilog simulator',
-            self.vivado_sim_wrapper, sim_cycles, 
-            _broken_factory, self.identity_factory, 
+            self.vivado_sim_wrapper, sim_cycles,
+            _broken_factory, self.identity_factory,
             self.default_args, self.default_arg_types)

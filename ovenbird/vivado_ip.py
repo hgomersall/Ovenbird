@@ -181,10 +181,11 @@ class VivadoIP(object):
 
         port_mapping_strings = []
         for port_name in self.ports:
-            instance_port_string = '${' + port_name + '}'
+            instance_port_string = '${' + port_name.replace('.', '_') + '}'
 
             port_mapping_strings.append(
-                '%s=>%s' % (port_name, instance_port_string))
+                '%s=>%s' % (
+                    port_name.replace('.', '_'), instance_port_string))
 
         port_mappings = ',\n    '.join(port_mapping_strings)
 
