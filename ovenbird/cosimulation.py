@@ -18,6 +18,7 @@ import csv
 import copy
 import re
 import collections
+import warnings
 
 
 try: # pragma: no branch
@@ -77,7 +78,14 @@ def _vivado_generic_cosimulation(
     # cosimulation
     outputs_length = None
     for each_signal in myhdl_outputs[1]:
-        _length = len(myhdl_outputs[1][each_signal])
+        # axi_stream args should be split up before checking
+        if arg_types[each_signal] == 'axi_stream_out':
+            signal_output = myhdl_outputs[1][each_signal]['signals']
+        else:
+            signal_output = myhdl_outputs[1][each_signal]
+
+        _length = len(signal_output)
+
         if outputs_length is not None:
             assert outputs_length == _length
 
@@ -113,8 +121,20 @@ def _vivado_generic_cosimulation(
         project_name = 'tmp_project'
         project_path = os.path.join(tmp_dir, project_name)
 
-        # Firstly check the dut is convertible
-        dut_factory(**args).convert(hdl=target_language, path=tmp_dir)
+#     FIXME - this should be uncommented. There is a bug in myhdl in which
+#     multiple converts cause problems.
+#        # Firstly check the dut is convertible
+#        # We wrap the actual dut in an argumentless block so the
+#        # issue of non-convertible top level signals goes away
+#        @block
+#        def minimal_wrapper():
+#            return dut_factory(**args)
+#
+#        with warnings.catch_warnings():
+#            # We don't worry about warnings at this stage - they are to be
+#            # expected. We only really care about errors.
+#            warnings.simplefilter("ignore")
+#            minimal_wrapper().convert(hdl=target_language, path=tmp_dir)
 
         time = period * _cycles
 
@@ -144,7 +164,8 @@ def _vivado_generic_cosimulation(
             # Generate the output VHDL files
             signal_output_filename = os.path.join(tmp_dir, 'signal_outputs')
             convertible_top = sim_object.dut_convertible_top(
-                signal_output_filename)
+                tmp_dir, signal_output_filename='signal_outputs',
+                axi_stream_packets_filename_prefix='axi_stream_out')
 
             ip_list = set(populate_vivado_ip_list(convertible_top, 'VHDL'))
 
@@ -160,17 +181,28 @@ def _vivado_generic_cosimulation(
             try:
                 convertible_top.convert(hdl='VHDL', path=tmp_dir)
             except myhdl.ConversionError as e:
-
                 raise ovenbird.OvenbirdConversionError(
                     'The convertible top from Veriutils failed to convert '
                     'with the following error: %s\n'
-                    'The code that has been passed in for verification (i.e. '
-                    'that you wrote) has been verified as converting '
-                    'properly. This means there could be a problem with the '
+                    'Though this could be a problem with you code, it'
+                    'could also mean there is a problem with the '
                     'way you set Veriutils up. Are all the signals defined '
                     'correctly and the signal types set up correctly '
                     '(importantly, all the outputs are defined as such)? '
                     'Alternatively it could be a bug in Veriutils.')
+                # FIXME currently the conversion test to verify user code
+                # is broken due to a myhdl bug (see above). The below
+                # exception string should be enabled when the bug is fixed.
+                #raise ovenbird.OvenbirdConversionError(
+                #    'The convertible top from Veriutils failed to convert '
+                #    'with the following error: %s\n'
+                #    'The code that has been passed in for verification (i.e. '
+                #    'that you wrote) has been verified as converting '
+                #    'properly. This means there could be a problem with the '
+                #    'way you set Veriutils up. Are all the signals defined '
+                #    'correctly and the signal types set up correctly '
+                #    '(importantly, all the outputs are defined as such)? '
+                #    'Alternatively it could be a bug in Veriutils.')
 
         elif target_language == 'Verilog':
             try:
@@ -186,7 +218,8 @@ def _vivado_generic_cosimulation(
             # Generate the output Verilog files
             signal_output_filename = os.path.join(tmp_dir, 'signal_outputs')
             convertible_top = sim_object.dut_convertible_top(
-                signal_output_filename)
+                tmp_dir, signal_output_filename='signal_outputs',
+                axi_stream_packets_filename_prefix='axi_stream_out')
 
             ip_list = set(populate_vivado_ip_list(convertible_top, 'Verilog'))
 
@@ -378,6 +411,8 @@ def _vivado_generic_cosimulation(
 
         for each_interface in interface_outputs:
 
+            signal_type = arg_types[each_interface]
+
             attr_names = interface_outputs[each_interface].keys()
 
             reordered_interface_outputs =  zip(
@@ -388,23 +423,66 @@ def _vivado_generic_cosimulation(
             # taking the values from ref_outputs if the interface signal was
             # not an output.
             new_dut_output = []
-            for ref_output, simulated_output in zip(
-                dut_outputs[each_interface], reordered_interface_outputs):
 
-                new_interface_out = ref_output.copy()
-                new_interface_out.update(
-                    dict(zip(attr_names, simulated_output)))
+            if signal_type == 'axi_stream_out':
+                for ref_output, simulated_output in zip(
+                    dut_outputs[each_interface]['signals'],
+                    reordered_interface_outputs):
 
-                new_dut_output.append(new_interface_out)
+                    new_interface_out = ref_output.copy()
+                    new_interface_out.update(
+                        dict(zip(attr_names, simulated_output)))
 
-            dut_outputs[each_interface] = new_dut_output
+                    new_dut_output.append(new_interface_out)
+
+                    dut_outputs[each_interface] = {'signals': new_dut_output}
+            else:
+                for ref_output, simulated_output in zip(
+                    dut_outputs[each_interface], reordered_interface_outputs):
+
+                    new_interface_out = ref_output.copy()
+                    new_interface_out.update(
+                        dict(zip(attr_names, simulated_output)))
+
+                    new_dut_output.append(new_interface_out)
+
+                    dut_outputs[each_interface] = new_dut_output
+
+        # Now extract the axi signals
+        for each_signal in ref_outputs:
+
+            packets = []
+            if arg_types[each_signal] == 'axi_stream_out':
+                axi_out_filename = os.path.join(
+                    tmp_dir, 'axi_stream_out' + '_' + each_signal)
+
+                with open(axi_out_filename, 'r') as axi_out_file:
+                    axi_packet_reader = csv.DictReader(
+                        axi_out_file, delimiter=',')
+                    vivado_axi_packet = [row for row in axi_packet_reader]
+
+                packet = []
+                for transaction in vivado_axi_packet:
+                    packet.append(int(transaction['TDATA'], 2))
+                    if int(transaction['TLAST']):
+                        packets.append(packet)
+                        packet = []
+
+                dut_outputs[each_signal]['packets'] = packets
 
         for each_signal in ref_outputs:
             # Now only output the correct number of cycles
-            ref_outputs[each_signal] = (
-                ref_outputs[each_signal][:outputs_length])
-            dut_outputs[each_signal] = (
-                dut_outputs[each_signal][:outputs_length])
+
+            if arg_types[each_signal] == 'axi_stream_out':
+                ref_outputs[each_signal]['signals'] = (
+                    ref_outputs[each_signal]['signals'][:outputs_length])
+                dut_outputs[each_signal]['signals'] = (
+                    dut_outputs[each_signal]['signals'][:outputs_length])
+            else:
+                ref_outputs[each_signal] = (
+                    ref_outputs[each_signal][:outputs_length])
+                dut_outputs[each_signal] = (
+                    dut_outputs[each_signal][:outputs_length])
 
     finally:
 
