@@ -96,7 +96,7 @@ def _vivado_generic_cosimulation(
     # the time definitions? Fence post issue?
     #
     # Is adding two to the number of cycles the right thing to do?
-    _cycles = outputs_length + 2
+    _cycles = outputs_length + 1
 
     tmp_dir = tempfile.mkdtemp()
 
@@ -469,6 +469,7 @@ def _vivado_generic_cosimulation(
                         packet = []
 
                 dut_outputs[each_signal]['packets'] = packets
+                dut_outputs[each_signal]['incomplete_packet'] = packet
 
         for each_signal in ref_outputs:
             # Now only output the correct number of cycles
