@@ -91,11 +91,8 @@ def _vivado_generic_cosimulation(
 
         outputs_length = _length
 
-    # Two cycles are lost in the vivado simulation - one for the propagation
-    # delay between reading and writing, and one because of differences in
-    # the time definitions? Fence post issue?
-    #
-    # Is adding two to the number of cycles the right thing to do?
+    # One cycle is lost in the vivado simulation for the propagation
+    # delay between reading and writing.
     _cycles = outputs_length + 1
 
     tmp_dir = tempfile.mkdtemp()
