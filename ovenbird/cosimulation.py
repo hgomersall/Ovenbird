@@ -461,9 +461,12 @@ def _vivado_generic_cosimulation(
                 packet = []
                 for transaction in vivado_axi_packet:
                     packet.append(int(transaction['TDATA'], 2))
-                    if int(transaction['TLAST']):
-                        packets.append(packet)
-                        packet = []
+                    try:
+                        if int(transaction['TLAST']):
+                            packets.append(packet)
+                            packet = []
+                    except KeyError:
+                        pass
 
                 dut_outputs[each_signal]['packets'] = packets
                 dut_outputs[each_signal]['incomplete_packet'] = packet
