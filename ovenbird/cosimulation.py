@@ -180,13 +180,13 @@ def _vivado_generic_cosimulation(
             except myhdl.ConversionError as e:
                 raise ovenbird.OvenbirdConversionError(
                     'The convertible top from Veriutils failed to convert '
-                    'with the following error: %s\n'
-                    'Though this could be a problem with you code, it'
+                    'with the following error:\n%s\n'
+                    'Though this could be a problem with your code, it '
                     'could also mean there is a problem with the '
                     'way you set Veriutils up. Are all the signals defined '
                     'correctly and the signal types set up correctly '
                     '(importantly, all the outputs are defined as such)? '
-                    'Alternatively it could be a bug in Veriutils.')
+                    'Alternatively it could be a bug in Veriutils.' % str(e))
                 # FIXME currently the conversion test to verify user code
                 # is broken due to a myhdl bug (see above). The below
                 # exception string should be enabled when the bug is fixed.
