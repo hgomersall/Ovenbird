@@ -9,11 +9,11 @@ from veriutils import (
     check_intbv_signal, check_bool_signal, check_reset_signal)
 from math import log, floor
 
-# The two bits we need from ovenbird in this example are VivadoIP and 
+# The two bits we need from ovenbird in this example are VivadoIP and
 # PortDirection
 from ovenbird import VivadoIP, PortDirection
 
-# We firstly define a few constants specific to _this_ example, but not 
+# We firstly define a few constants specific to _this_ example, but not
 # relevant to understanding VivadoIP.
 
 # Opmode enumeration
@@ -39,59 +39,59 @@ class VivadoDSPMacro(VivadoIP):
         # the IP at run time, should that be desired.
 
         # The parent class __init__ is called with the following arguments
-        # defined. These fully describe the IP to be instantiated and 
+        # defined. These fully describe the IP to be instantiated and
         # (hopefully) are as flexible as instantiation inside Vivado.
 
-        # port_mappings gives the mapping from signal names (which most easily 
-        # should be the same as those used by the subsequent MyHDL block, 
-        # though this can be updated when the instance is created) to 
-        # a tuple containing the MyHDL signal type, the signal direction and 
+        # port_mappings gives the mapping from signal names (which most easily
+        # should be the same as those used by the subsequent MyHDL block,
+        # though this can be updated when the instance is created) to
+        # a tuple containing the MyHDL signal type, the signal direction and
         # the respective name that the IP block uses for the signal.
         #
         # The type is set using a valid MyHDL type, as follows. The length
         # of the bit vector should agree with that mandated by the created
         # IP block. In the case of VHDL, the signal is cast to std_logic or
         # std_logic_vector at conversion time.
-        # 
+        #
         # The port direction is set by the PortDirection enumeration (input
         # or output).
         #
         # The IP block signal name is simply a string and should agree with
         # the documentation.
         port_mappings = {
-            'A': (intbv(0, min=-(2**24-1), max=(2**24)), 
+            'A': (intbv(0, min=-(2**24-1), max=(2**24)),
                   PortDirection.input, 'A'),
-            'B': (intbv(0, min=-(2**17-1), max=(2**17)), 
+            'B': (intbv(0, min=-(2**17-1), max=(2**17)),
                   PortDirection.input, 'B'),
-            'C': (intbv(0, min=-(2**47-1), max=(2**47)), 
+            'C': (intbv(0, min=-(2**47-1), max=(2**47)),
                   PortDirection.input, 'C'),
-            'P': (intbv(0, min=-(2**47-1), max=(2**47)), 
+            'P': (intbv(0, min=-(2**47-1), max=(2**47)),
                   PortDirection.output, 'P'),
             'opmode': (intbv(0)[2:], PortDirection.input, 'SEL'),
             'reset': (intbv(0)[1:], PortDirection.input, 'SCLR'),
             'clock': (intbv(0)[1:], PortDirection.input, 'CLK'),
             'clock_enable': (intbv(0)[1:], PortDirection.input, 'CE')}
-        
+
         # config is the meat of describing the IP block. Each key corresponds
         # to a CONFIG option on the macro.
-        # The options should be described in the IP block documentation, 
-        # but the easiest way of working out the options is to create 
-        # an instance of the IP block in a dummy project (either with a 
+        # The options should be described in the IP block documentation,
+        # but the easiest way of working out the options is to create
+        # an instance of the IP block in a dummy project (either with a
         # block diagram or through the IP Catalog) and then inspect that
         # instance through the tcl console.
-        # 
-        # 
+        #
+        #
         # It's possible to see what happens when you twiddle parameters in
         # the Vivado IP GUI by observing the tcl console and what CONFIG
         # values are changed.
         #
-        # If using a block diagram to inspect the IP block, get a list of the 
+        # If using a block diagram to inspect the IP block, get a list of the
         # valid options with:
         # list_property [get_bd_cells ip_instance_name]
         # or
         # report_property [get_bd_cells ip_instance_name] to get more
         # information.
-        # 
+        #
         # If you're using the IP Catalog to twiddle the ip, then use
         # get_ips instead of get_bd_cells.
         #
@@ -145,21 +145,21 @@ class VivadoDSPMacro(VivadoIP):
         # ip_name is the name of the ip block to be created
         ip_name = 'xbip_dsp48_macro'
 
-        # vendor, library and version are the config options to fully 
+        # vendor, library and version are the config options to fully
         # describe the ip block to Vivado
         vendor = 'xilinx.com'
         library = 'ip'
         version = '3.0'
 
         VivadoIP.__init__(
-            self, entity_name, port_mappings, ip_name, vendor, library, 
+            self, entity_name, port_mappings, ip_name, vendor, library,
             version, config)
 
-# Since the VivadoIP block can be configurable, we need to create a 
+# Since the VivadoIP block can be configurable, we need to create a
 # specific manifestation - passing arguments as necessary (which in this case
 # is not applicable as VivadoDSPMacro has no arguments defined).
-# 
-# Note that this is not an instance of the IP block in the HDL sense, but 
+#
+# Note that this is not an instance of the IP block in the HDL sense, but
 # instead a fully described IP block from which instances can be created.
 dsp_macro = VivadoDSPMacro()
 
@@ -168,7 +168,7 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
     '''A MyHDL DSP48E1 block, using the encrypted IP when it is converted.
     '''
 
-    # In this case, we've implemented something pretty close to how the 
+    # In this case, we've implemented something pretty close to how the
     # DSP block actually works internally. This is not a requirement, and
     # the Python code does not need to be convertible.
 
@@ -177,8 +177,8 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
     check_intbv_signal(B, 'B', 18, signed=True)
     check_intbv_signal(C, 'C', 48, signed=True)
     check_intbv_signal(P, 'P', 48, signed=True)
-    check_intbv_signal(opmode, 'opmode', val_range=(0, N_DSP48E1_OPMODES))    
-    check_bool_signal(clock_enable, 'clock_enable')    
+    check_intbv_signal(opmode, 'opmode', val_range=(0, N_DSP48E1_OPMODES))
+    check_bool_signal(clock_enable, 'clock_enable')
     check_bool_signal(clock, 'clock')
     check_reset_signal(reset, 'reset', active=1, async=False)
 
@@ -192,7 +192,7 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
     M_register = Signal(intbv(val=0, min=min_out, max=max_out))
     C_register1 = Signal(intbv(val=0, min=min_out, max=max_out))
     C_register2 = Signal(intbv(val=0, min=min_out, max=max_out))
-    
+
     P_register = Signal(intbv(val=0, min=min_out, max=max_out))
 
     # Set up the opmode registers.
@@ -210,7 +210,7 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
 
     ALUMODE_ACCUMULATE = 0
     ALUMODE_DECCUMULATE = 3
-    alumode = Signal(intbv(0)[4:])    
+    alumode = Signal(intbv(0)[4:])
 
     @always_seq(clock.posedge, reset=reset)
     def opmode_pipeline():
@@ -280,7 +280,7 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
 
         if clock_enable: # pragma: no branch
             # The partial products are combined in this implementation.
-            # No problems with this as all we are doing is multiply/add or 
+            # No problems with this as all we are doing is multiply/add or
             # multiply/accumulate.
             if opmode_X == X_M:
                 X_output[:] = M_register
@@ -323,15 +323,15 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
 
     A.read = True
     B.read = True
-    C.read = True    
+    C.read = True
     P.driven = 'wire'
     opmode.read = True
     clock_enable.read = True
     clock.read = True
     reset.read = True
 
-    # The instance is created here. 
-    # get_verilog_instance and get_vhdl_instance return an instance of 
+    # The instance is created here.
+    # get_verilog_instance and get_vhdl_instance return an instance of
     # a child class of string. This means it can be assigned directly to
     # the MyHDL expected verilog_code and vhdl_code, fitting trivially
     # into MyHDL's conversion tools.
@@ -341,6 +341,6 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
     DSP48E1.verilog_code = dsp_macro.get_verilog_instance()
     DSP48E1.vhdl_code = dsp_macro.get_vhdl_instance()
 
-    return (dsp48e1_block, opmode_pipeline, 
+    return (dsp48e1_block, opmode_pipeline,
             set_opmode_X, set_opmode_Y, set_opmode_Z, set_P, set_ALUMODE)
 
