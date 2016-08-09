@@ -255,6 +255,7 @@ class VivadoIP(object):
             port_type = self.ports[port_name][0]
             port_direction = self.ports[port_name][1]
             ip_port_mapping = self.ports[port_name][2]
+            port_name = port_name.replace(".", '_')
 
             port_length = len(port_type)
             if port_length > 1:
