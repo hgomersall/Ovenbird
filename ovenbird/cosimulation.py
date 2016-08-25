@@ -237,7 +237,7 @@ def _vivado_generic_cosimulation(
                     'way you set Veriutils up. Are all the signals defined '
                     'correctly and the signal types set up correctly '
                     '(importantly, all the outputs are defined as such)? '
-                    'Alternatively it could be a bug in Veriutils.')
+                    'Alternatively it could be a bug in Veriutils.' % str(e))
 
         else:
             raise ValueError('Target language must be \'Verilog\' or '
