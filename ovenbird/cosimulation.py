@@ -20,7 +20,6 @@ import re
 import collections
 import warnings
 
-
 try: # pragma: no branch
     # Python 2
     from ConfigParser import RawConfigParser
@@ -52,6 +51,21 @@ launch_simulation
 close_sim
 close_project
 ''')
+
+def _get_signal_names_to_port_names(filename, comment_string):
+
+    with open(filename) as f:
+        code = f.read()
+
+    signal_name_mappings = {}
+    for each in re.finditer(
+        '^%s <name_annotation>.*?$' % comment_string, code, re.MULTILINE):
+        vals = code[each.start():each.end()].split()
+
+        signal_name_mappings[vals[2]] = vals[3]
+
+    return signal_name_mappings
+
 
 class VivadoError(RuntimeError):
     pass
@@ -152,8 +166,11 @@ def _vivado_generic_cosimulation(
             except AttributeError:
                 vhdl_dependencies = []
 
+            convertible_top_filename = os.path.join(
+                tmp_dir, 'dut_convertible_top.vhd')
+
             vhdl_dut_files = [
-                os.path.join(tmp_dir, 'dut_convertible_top.vhd'),
+                convertible_top_filename,
                 os.path.join(tmp_dir, myhdl_vhdl_package_filename)]
 
             vhdl_files += vhdl_dependencies + vhdl_dut_files
@@ -175,31 +192,54 @@ def _vivado_generic_cosimulation(
 
             toVHDL.initial_values = True
 
-            try:
-                convertible_top.convert(hdl='VHDL', path=tmp_dir)
-            except myhdl.ConversionError as e:
-                raise ovenbird.OvenbirdConversionError(
-                    'The convertible top from Veriutils failed to convert '
-                    'with the following error:\n%s\n'
-                    'Though this could be a problem with your code, it '
-                    'could also mean there is a problem with the '
-                    'way you set Veriutils up. Are all the signals defined '
-                    'correctly and the signal types set up correctly '
-                    '(importantly, all the outputs are defined as such)? '
-                    'Alternatively it could be a bug in Veriutils.' % str(e))
-                # FIXME currently the conversion test to verify user code
-                # is broken due to a myhdl bug (see above). The below
-                # exception string should be enabled when the bug is fixed.
-                #raise ovenbird.OvenbirdConversionError(
-                #    'The convertible top from Veriutils failed to convert '
-                #    'with the following error: %s\n'
-                #    'The code that has been passed in for verification (i.e. '
-                #    'that you wrote) has been verified as converting '
-                #    'properly. This means there could be a problem with the '
-                #    'way you set Veriutils up. Are all the signals defined '
-                #    'correctly and the signal types set up correctly '
-                #    '(importantly, all the outputs are defined as such)? '
-                #    'Alternatively it could be a bug in Veriutils.')
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter('always', myhdl.ToVHDLWarning)
+                try:
+                    convertible_top.convert(hdl='VHDL', path=tmp_dir)
+
+                except myhdl.ConversionError as e:
+                    raise ovenbird.OvenbirdConversionError(
+                        'The convertible top from Veriutils failed to convert '
+                        'with the following error:\n%s\n'
+                        'Though this could be a problem with your code, it '
+                        'could also mean there is a problem with the '
+                        'way you set Veriutils up. Are all the signals defined '
+                        'correctly and the signal types set up correctly '
+                        '(importantly, all the outputs are defined as such)? '
+                        'Alternatively it could be a bug in Veriutils.' % str(e))
+                    # FIXME currently the conversion test to verify user code
+                    # is broken due to a myhdl bug (see above). The below
+                    # exception string should be enabled when the bug is fixed.
+                    #raise ovenbird.OvenbirdConversionError(
+                    #    'The convertible top from Veriutils failed to convert '
+                    #    'with the following error: %s\n'
+                    #    'The code that has been passed in for verification (i.e. '
+                    #    'that you wrote) has been verified as converting '
+                    #    'properly. This means there could be a problem with the '
+                    #    'way you set Veriutils up. Are all the signals defined '
+                    #    'correctly and the signal types set up correctly '
+                    #    '(importantly, all the outputs are defined as such)? '
+                    #    'Alternatively it could be a bug in Veriutils.')
+
+                vhdl_conversion_warnings = w
+
+            signal_name_mappings = _get_signal_names_to_port_names(
+                convertible_top_filename, '--')
+
+            for warning in vhdl_conversion_warnings:
+                message = str(warning.message)
+
+                for internal_name in signal_name_mappings:
+                    if internal_name in message:
+                        port_name = signal_name_mappings[internal_name]
+                        message = str.replace(
+                            message, internal_name,
+                            '%s (internally to VHDL: %s)' %
+                            (port_name, internal_name))
+
+                warnings.warn_explicit(
+                    message, warning.category, warning.filename,
+                    warning.lineno)
 
         elif target_language == 'Verilog':
             try:
@@ -207,8 +247,9 @@ def _vivado_generic_cosimulation(
             except AttributeError:
                 verilog_dependencies = []
 
-            verilog_dut_files = [
-                os.path.join(tmp_dir, 'dut_convertible_top.v'),]
+            convertible_top_filename = os.path.join(
+                tmp_dir, 'dut_convertible_top.v')
+            verilog_dut_files = [convertible_top_filename,]
 
             verilog_files += verilog_dependencies + verilog_dut_files
 
@@ -224,20 +265,43 @@ def _vivado_generic_cosimulation(
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
 
             toVerilog.initial_values = True
-            try:
-                convertible_top.convert(hdl='Verilog', path=tmp_dir)
-            except myhdl.ConversionError as e:
 
-                raise ovenbird.OvenbirdConversionError(
-                    'The convertible top from Veriutils failed to convert '
-                    'with the following error: %s\n'
-                    'The code that has been passed in for verification (i.e. '
-                    'that you wrote) has been verified as converting '
-                    'properly. This means there could be a problem with the '
-                    'way you set Veriutils up. Are all the signals defined '
-                    'correctly and the signal types set up correctly '
-                    '(importantly, all the outputs are defined as such)? '
-                    'Alternatively it could be a bug in Veriutils.' % str(e))
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter('always', myhdl.ToVerilogWarning)
+                try:
+                    convertible_top.convert(hdl='Verilog', path=tmp_dir)
+                except myhdl.ConversionError as e:
+
+                    raise ovenbird.OvenbirdConversionError(
+                        'The convertible top from Veriutils failed to convert '
+                        'with the following error: %s\n'
+                        'The code that has been passed in for verification (i.e. '
+                        'that you wrote) has been verified as converting '
+                        'properly. This means there could be a problem with the '
+                        'way you set Veriutils up. Are all the signals defined '
+                        'correctly and the signal types set up correctly '
+                        '(importantly, all the outputs are defined as such)? '
+                        'Alternatively it could be a bug in Veriutils.' % str(e))
+
+                verilog_conversion_warnings = w
+
+            signal_name_mappings = _get_signal_names_to_port_names(
+                convertible_top_filename, '//')
+
+            for warning in verilog_conversion_warnings:
+                message = str(warning.message)
+
+                for internal_name in signal_name_mappings:
+                    if internal_name in message:
+                        port_name = signal_name_mappings[internal_name]
+                        message = str.replace(
+                            message, internal_name,
+                            '%s (internally to Verilog: %s)' %
+                            (port_name, internal_name))
+
+                warnings.warn_explicit(
+                    message, warning.category, warning.filename,
+                    warning.lineno)
 
         else:
             raise ValueError('Target language must be \'Verilog\' or '

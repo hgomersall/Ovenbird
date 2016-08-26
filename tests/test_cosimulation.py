@@ -3,12 +3,14 @@ from tests.base_hdl_test import TestCase
 from veriutils import *
 from myhdl import (intbv, modbv, enum, Signal, ResetSignal, instance,
                    delay, always, always_seq, Simulation, StopSimulation,
-                   always_comb, block, BlockError, ConversionError)
+                   always_comb, block, BlockError, ConversionError,
+                   ToVHDLWarning)
 
 import unittest
 import copy
 from itertools import chain
 from random import randrange
+import warnings
 
 import os
 import tempfile
@@ -97,6 +99,44 @@ class VivadoCosimulationFunctionTests(ConvertibleCodeTestsMixin):
 
         # Make sure the asserion is exactly a ConversionError
         self.assertIs(type(cm.exception), ConversionError)
+
+    def test_warnings_include_port_mappings(self):
+        '''Conversion warnings should include a reference to the correct port
+        name (not just the internal MyHDL name)
+        '''
+        @block
+        def convertible_block(
+            clock, input_signal, output_signal, test_signal2):
+
+            @always(clock.posedge)
+            def driver():
+                output_signal.next = input_signal
+
+            return driver
+
+        args = {'clock': Signal(False),
+                'input_signal': Signal(False),
+                'output_signal': Signal(False),
+                'test_signal2': Signal(False)}
+
+        arg_types = {'clock': 'clock',
+                     'input_signal': 'random',
+                     'output_signal': 'output',
+                     'test_signal2': 'custom'}
+
+        with warnings.catch_warnings(record=True) as w:
+            self.vivado_sim_wrapper(10, convertible_block, convertible_block,
+                                    args, arg_types)
+
+            self.assertTrue('test_signal2' in str(w[0].message))
+
+        arg_types['test_signal2'] = 'output'
+
+        with warnings.catch_warnings(record=True) as w:
+            self.vivado_sim_wrapper(10, convertible_block, convertible_block,
+                                    args, arg_types)
+
+            self.assertTrue('test_signal2' in str(w[0].message))
 
     def test_conversion_error_of_veriutils_convertible_top(self):
         '''Conversion errors of the veriutils convertible top should be
