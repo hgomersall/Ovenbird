@@ -48,8 +48,17 @@ update_compile_order -fileset sources_1
 update_compile_order -fileset sim_1
 set_property -name {xsim.simulate.runtime} -value {${time}ns} -objects [current_fileset -simset]
 launch_simulation
+$vcd_capture_script
 close_sim
 close_project
+''')
+
+_vcd_capture_template = string.Template('''
+restart
+open_vcd ${vcd_filename}
+log_vcd
+run ${time}ns
+close_vcd
 ''')
 
 def _get_signal_names_to_port_names(filename, comment_string):
@@ -159,6 +168,15 @@ def _vivado_generic_cosimulation(
         ip_additional_hdl_files = []
 
         load_and_configure_ips_tcl_string = ''
+
+        if vcd_name is not None:
+            vcd_filename = os.path.realpath(vcd_name + '.vivado.vcd')
+            vcd_capture_script = _vcd_capture_template.safe_substitute(
+                {'vcd_filename': vcd_filename,
+                 'time': time})
+
+        else:
+            vcd_capture_script = ''
 
         if target_language == 'VHDL':
             try:
@@ -328,7 +346,8 @@ def _vivado_generic_cosimulation(
             'load_and_configure_ips': load_and_configure_ips_tcl_string,
             'vhdl_files': vhdl_files_string,
             'verilog_files': verilog_files_string,
-            'ip_additional_hdl_files': ip_additional_hdl_files_string}
+            'ip_additional_hdl_files': ip_additional_hdl_files_string,
+            'vcd_capture_script': vcd_capture_script}
 
         simulate_script = _simulate_tcl_template.safe_substitute(
             template_substitutions)
