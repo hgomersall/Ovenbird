@@ -61,6 +61,23 @@ run ${time}ns
 close_vcd
 ''')
 
+def _populate_vivado_ip_list(block, hdl):
+
+    try:
+        if hdl == 'VHDL':
+            vivado_ip_list = [block.vhdl_code.code.ip_instance]
+        else:
+            vivado_ip_list = [block.verilog_code.code.ip_instance]
+
+    except AttributeError:
+        vivado_ip_list = []
+
+    for sub in block.subs:
+        if isinstance(sub, myhdl._block._Block):
+            vivado_ip_list += _populate_vivado_ip_list(sub, hdl)
+
+    return vivado_ip_list
+
 def _get_signal_names_to_port_names(filename, comment_string):
 
     with open(filename) as f:
@@ -119,23 +136,6 @@ def _vivado_generic_cosimulation(
     _cycles = outputs_length + 1
 
     tmp_dir = tempfile.mkdtemp()
-
-    def populate_vivado_ip_list(block, hdl):
-
-        try:
-            if hdl == 'VHDL':
-                vivado_ip_list = [block.vhdl_code.code.ip_instance]
-            else:
-                vivado_ip_list = [block.verilog_code.code.ip_instance]
-
-        except AttributeError:
-            vivado_ip_list = []
-
-        for sub in block.subs:
-            if isinstance(sub, myhdl._block._Block):
-                vivado_ip_list += populate_vivado_ip_list(sub, hdl)
-
-        return vivado_ip_list
 
     try:
         project_name = 'tmp_project'
@@ -199,7 +199,7 @@ def _vivado_generic_cosimulation(
                 tmp_dir, signal_output_filename='signal_outputs',
                 axi_stream_packets_filename_prefix='axi_stream_out')
 
-            ip_list = set(populate_vivado_ip_list(convertible_top, 'VHDL'))
+            ip_list = set(_populate_vivado_ip_list(convertible_top, 'VHDL'))
 
             for ip_object in ip_list:
 
@@ -277,7 +277,7 @@ def _vivado_generic_cosimulation(
                 tmp_dir, signal_output_filename='signal_outputs',
                 axi_stream_packets_filename_prefix='axi_stream_out')
 
-            ip_list = set(populate_vivado_ip_list(convertible_top, 'Verilog'))
+            ip_list = set(_populate_vivado_ip_list(convertible_top, 'Verilog'))
 
             for ip_object in ip_list:
                 load_and_configure_ips_tcl_string += ip_object.tcl_string
