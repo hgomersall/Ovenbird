@@ -11,29 +11,29 @@ import random
 from collections import deque
 
 from .dsp48e1 import (
-    DSP48E1, DSP48E1_OPMODE_MULTIPLY, DSP48E1_OPMODE_MULTIPLY_ADD, 
+    DSP48E1, DSP48E1_OPMODE_MULTIPLY, DSP48E1_OPMODE_MULTIPLY_ADD,
     DSP48E1_OPMODE_MULTIPLY_ACCUMULATE,
     DSP48E1_OPMODE_MULTIPLY_DECCUMULATE)
 
 from veriutils import (
     myhdl_cosimulation, copy_signal)
-    
+
 from ovenbird import (
     vivado_vhdl_cosimulation, vivado_verilog_cosimulation, VIVADO_EXECUTABLE)
 
 PERIOD = 10
 
 class DSP48E1TestCase(HDLTestCase):
-    
+
     def setUp(self):
-        
+
         self.len_A = 25
         self.len_B = 18
         self.len_C = 48
         self.len_P = 48
 
         self.clock = Signal(bool(1))
-        self.clock_enable = Signal(bool(1))        
+        self.clock_enable = Signal(bool(1))
         self.reset = ResetSignal(bool(0), active=1, async=False)
 
         self.A, self.a_min, self.a_max = (
@@ -67,12 +67,12 @@ class DSP48E1TestCase(HDLTestCase):
 
         self.default_args = {
             'A': self.A, 'B': self.B, 'C': self.C, 'P': self.P,
-            'opmode': self.opmode, 'reset': self.reset, 'clock': self.clock, 
+            'opmode': self.opmode, 'reset': self.reset, 'clock': self.clock,
             'clock_enable': self.clock_enable}
 
         self.default_arg_types = {
-            'A': 'random', 'B': 'random', 'C': 'random', 'P': 'output', 
-            'opmode': 'custom', 'reset': 'init_reset', 'clock': 'clock', 
+            'A': 'random', 'B': 'random', 'C': 'random', 'P': 'output',
+            'opmode': 'custom', 'reset': 'init_reset', 'clock': 'clock',
             'clock_enable': 'custom'}
 
         # Should work, no probs
@@ -116,11 +116,11 @@ class TestDSP48E1Interface(DSP48E1TestCase):
     def test_opmode_port_checked(self):
         '''The opmode port should be an unsigned intbv.
 
-        The min and max values of the opmode port should be determined by 
+        The min and max values of the opmode port should be determined by
         the number of implemented opmodes.
         '''
         opmode_range = (self.opmode.min, self.opmode.max)
-        self.do_port_check_intbv_test(DSP48E1, 'opmode', 
+        self.do_port_check_intbv_test(DSP48E1, 'opmode',
                                       val_range=opmode_range)
 
     def test_clock_port_checked(self):
@@ -149,10 +149,10 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
     should be verifiable through simulation.
     '''
 
-    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args, 
+    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args,
                    arg_types, **kwargs):
 
-        return myhdl_cosimulation(sim_cycles, dut_factory, ref_factory, 
+        return myhdl_cosimulation(sim_cycles, dut_factory, ref_factory,
                                   args, arg_types, **kwargs)
 
     def test_basic_multiply(self):
@@ -168,7 +168,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                 self.opmode.next = self.operations['multiply']
 
             return _set_opmode
-        
+
         @block
         def ref(**kwargs):
 
@@ -189,13 +189,13 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
 
         cycles = 20
         dut_outputs, ref_outputs = self.cosimulate(
-            cycles, DSP48E1, ref, args, arg_types, 
+            cycles, DSP48E1, ref, args, arg_types,
             custom_sources=[(set_opmode, (), {})])
 
-        # There are pipeline_registers cycles latency on the output. 
-        # The reference above has only 1 cycle latency, so we need to offset 
+        # There are pipeline_registers cycles latency on the output.
+        # The reference above has only 1 cycle latency, so we need to offset
         # the results by pipeline_registers - 1 cycles.
-        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:], 
+        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:],
                          ref_outputs['P'][:-(self.pipeline_registers - 1)])
 
     def test_multiply_add(self):
@@ -217,7 +217,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             P = kwargs['P']
             A = kwargs['A']
             B = kwargs['B']
-            C = kwargs['C']            
+            C = kwargs['C']
             clock = kwargs['clock']
             reset = kwargs['reset']
 
@@ -235,11 +235,11 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             cycles, DSP48E1, ref, args, arg_types,
             custom_sources=[(set_opmode, (), {})])
 
-        # There are pipeline_registers cycles latency on the output. 
-        # The reference above has only 1 cycle latency, so we need to offset 
+        # There are pipeline_registers cycles latency on the output.
+        # The reference above has only 1 cycle latency, so we need to offset
         # the results by pipeline_registers - 1 cycles.
 
-        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:], 
+        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:],
                          ref_outputs['P'][:-(self.pipeline_registers - 1)])
 
 
@@ -247,7 +247,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
         '''There should be a multiply-accumulate mode, giving P + A * B.
 
         P is defined to be the output, which is not pipelined. That is,
-        the output should always be incremented by A*B as long as the 
+        the output should always be incremented by A*B as long as the
         multiply-accumulate is ongoing.
         '''
         reset = self.default_args['reset']
@@ -285,17 +285,17 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             cycles, DSP48E1, ref, args, arg_types,
             custom_sources=[(set_opmode, (), {})])
 
-        # There are pipeline_registers cycles latency on the output. 
-        # The reference above has only 1 cycle latency, so we need to offset 
+        # There are pipeline_registers cycles latency on the output.
+        # The reference above has only 1 cycle latency, so we need to offset
         # the results by pipeline_registers - 1 cycles.
-        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:], 
+        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:],
                          ref_outputs['P'][:-(self.pipeline_registers - 1)])
 
     def test_multiply_deccumulate(self):
         '''There should be a multiply-deccumulate mode, giving P - A * B.
 
         P is defined to be the output, which is not pipelined. That is,
-        the output should be negated on every cycle and then incremented by 
+        the output should be negated on every cycle and then incremented by
         A*B as long as the multiply-deccumulate is ongoing.
         '''
         reset = self.default_args['reset']
@@ -334,10 +334,10 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             cycles, DSP48E1, ref, args, arg_types,
             custom_sources=[(set_opmode, (), {})])
 
-        # There are pipeline_registers cycles latency on the output. 
-        # The reference above has only 1 cycle latency, so we need to offset 
+        # There are pipeline_registers cycles latency on the output.
+        # The reference above has only 1 cycle latency, so we need to offset
         # the results by pipeline_registers - 1 cycles.
-        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:], 
+        self.assertEqual(dut_outputs['P'][self.pipeline_registers - 1:],
                          ref_outputs['P'][:-(self.pipeline_registers - 1)])
 
     def test_clock_enable(self):
@@ -366,7 +366,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             A = kwargs['A']
             B = kwargs['B']
             opmode = kwargs['opmode']
-            clock_enable = kwargs['clock_enable']            
+            clock_enable = kwargs['clock_enable']
             clock = kwargs['clock']
             reset = kwargs['reset']
 
@@ -377,12 +377,12 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             B_pipeline = deque(
                 [copy_signal(B) for _ in range(self.pipeline_registers - 1)])
             opmode_pipeline = deque(
-                [copy_signal(opmode) for _ in 
+                [copy_signal(opmode) for _ in
                  range(self.pipeline_registers - 1)])
 
             @always(clock.posedge)
             def test_arbitrary_pipeline():
-                
+
                 if reset == reset.active:
                     for _A, _B, _opmode in zip(
                         A_pipeline, B_pipeline, opmode_pipeline):
@@ -390,7 +390,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                         _A.next = _A._init
                         _B.next = _B._init
                         _opmode.next = _opmode._init
-                    
+
                     P.next = P._init
 
                 else:
@@ -403,7 +403,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                         A_out = A_pipeline.popleft()
                         B_out = B_pipeline.popleft()
                         opmode_out = opmode_pipeline.popleft()
-                        
+
                         P.next = A_out * B_out
                     else:
                         # Nothing changes
@@ -449,7 +449,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             A = kwargs['A']
             B = kwargs['B']
             opmode = kwargs['opmode']
-            clock_enable = kwargs['clock_enable']            
+            clock_enable = kwargs['clock_enable']
             clock = kwargs['clock']
             reset = kwargs['reset']
 
@@ -460,12 +460,12 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             B_pipeline = deque(
                 [copy_signal(B) for _ in range(self.pipeline_registers - 1)])
             opmode_pipeline = deque(
-                [copy_signal(opmode) for _ in 
+                [copy_signal(opmode) for _ in
                  range(self.pipeline_registers - 1)])
 
             @always(clock.posedge)
             def test_arbitrary_pipeline():
-                
+
                 if reset == reset.active:
                     for _A, _B, _opmode in zip(
                         A_pipeline, B_pipeline, opmode_pipeline):
@@ -484,7 +484,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                         A_out = A_pipeline.popleft()
                         B_out = B_pipeline.popleft()
                         opmode_out = opmode_pipeline.popleft()
-                        
+
                         P.next = A_out * B_out
                     else:
                         # Nothing changes
@@ -499,13 +499,13 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                           'clock_enable': 'random'})
 
         custom_sources = [
-            (weighted_random_reset_source, 
+            (weighted_random_reset_source,
              (args['reset'], args['clock'], 0.7), {})]
 
         # Don't run too many cycles or you'll get an overflow!
         cycles = 40
         dut_outputs, ref_outputs = self.cosimulate(
-            cycles, DSP48E1, ref, args, arg_types, 
+            cycles, DSP48E1, ref, args, arg_types,
             custom_sources=custom_sources+[(set_opmode, (), {})])
 
         self.assertEqual(dut_outputs['reset'], ref_outputs['reset'])
@@ -518,7 +518,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
         pipeline with the data. That is, the mode should be attached to
         the input it accompanies.
         '''
-        
+
         # Create the (unique) reverse lookup
         opmode_reverse_lookup = {
             self.operations[key]: key for key in self.operations}
@@ -540,7 +540,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                         driven_reset.next = 1
                     else:
                         driven_reset.next = 0
-                        
+
                     yield(clock.posedge)
 
             return custom_reset
@@ -551,9 +551,9 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             P = kwargs['P']
             A = kwargs['A']
             B = kwargs['B']
-            C = kwargs['C']            
+            C = kwargs['C']
             opmode = kwargs['opmode']
-            clock_enable = kwargs['clock_enable']            
+            clock_enable = kwargs['clock_enable']
             clock = kwargs['clock']
             reset = kwargs['reset']
 
@@ -566,12 +566,12 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
             C_pipeline = deque(
                 [copy_signal(C) for _ in range(self.pipeline_registers - 1)])
             opmode_pipeline = deque(
-                [copy_signal(opmode) for _ in 
+                [copy_signal(opmode) for _ in
                  range(self.pipeline_registers - 1)])
 
             @always(clock.posedge)
             def test_arbitrary_pipeline():
-                
+
                 if reset == reset.active:
                     for _A, _B, _C, _opmode in zip(
                         A_pipeline, B_pipeline, C_pipeline, opmode_pipeline):
@@ -593,20 +593,20 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
                         B_out = B_pipeline.popleft()
                         C_out = C_pipeline.popleft()
                         opmode_out = opmode_pipeline.popleft()
-                        
-                        if (opmode_reverse_lookup[int(opmode_out.val)] == 
+
+                        if (opmode_reverse_lookup[int(opmode_out.val)] ==
                             'multiply'):
                             P.next = A_out * B_out
 
-                        elif (opmode_reverse_lookup[int(opmode_out.val)] == 
+                        elif (opmode_reverse_lookup[int(opmode_out.val)] ==
                               'multiply_add'):
                             P.next = A_out * B_out + C_out
 
-                        elif (opmode_reverse_lookup[int(opmode_out.val)] == 
+                        elif (opmode_reverse_lookup[int(opmode_out.val)] ==
                             'multiply_accumulate'):
                             P.next = P + A_out * B_out
 
-                        elif (opmode_reverse_lookup[int(opmode_out.val)] == 
+                        elif (opmode_reverse_lookup[int(opmode_out.val)] ==
                             'multiply_deccumulate'):
                             P.next = P - A_out * B_out
 
@@ -625,34 +625,34 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
 
         cycles = 100
         dut_outputs, ref_outputs = self.cosimulate(
-            cycles, DSP48E1, ref, args, arg_types, 
+            cycles, DSP48E1, ref, args, arg_types,
             custom_sources=custom_sources)
 
-        self.assertEqual(dut_outputs['reset'], ref_outputs['reset'])   
+        self.assertEqual(dut_outputs['reset'], ref_outputs['reset'])
         self.assertEqual(dut_outputs['P'], ref_outputs['P'])
 
 @unittest.skipIf(VIVADO_EXECUTABLE is None, 'Vivado executable not in path')
 class TestDSP48E1VivadoVHDLSimulation(TestDSP48E1Simulation):
-    '''The tests of TestDSP48E1Simulation should run under the Vivado 
+    '''The tests of TestDSP48E1Simulation should run under the Vivado
     simulator using VHDL.
     '''
 
-    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args, 
+    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args,
                    arg_types, **kwargs):
 
-        return vivado_vhdl_cosimulation(sim_cycles, dut_factory, ref_factory, 
+        return vivado_vhdl_cosimulation(sim_cycles, dut_factory, ref_factory,
                                         args, arg_types, **kwargs)
 
 
 @unittest.skipIf(VIVADO_EXECUTABLE is None, 'Vivado executable not in path')
 class TestDSP48E1VivadoVerilogSimulation(TestDSP48E1Simulation):
-    '''The tests of TestDSP48E1Simulation should run under the Vivado 
+    '''The tests of TestDSP48E1Simulation should run under the Vivado
     simulator using VHDL.
     '''
 
-    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args, 
+    def cosimulate(self, sim_cycles, dut_factory, ref_factory, args,
                    arg_types, **kwargs):
 
         return vivado_verilog_cosimulation(
-            sim_cycles, dut_factory, ref_factory, 
+            sim_cycles, dut_factory, ref_factory,
             args, arg_types, **kwargs)
