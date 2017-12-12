@@ -1,4 +1,4 @@
-from veriutils.tests.test_axi import TestAxiMasterPlaybackBlockMinimal
+from veriutils.tests.test_axi_stream import TestAxiMasterPlaybackBlockMinimal
 from ovenbird import vivado_verilog_cosimulation, vivado_vhdl_cosimulation
 
 class TestAxiMasterPlaybackBlockMinimalVivadoVHDL(
@@ -16,3 +16,4 @@ class TestAxiMasterPlaybackBlockMinimalVivadoVerilog(
 
         return vivado_verilog_cosimulation(
             sim_cycles, dut_factory, ref_factory, args, arg_types, **kwargs)
+

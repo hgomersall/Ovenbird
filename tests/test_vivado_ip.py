@@ -11,7 +11,7 @@ class VivadoVectorOr(VivadoIP):
         port_mappings = {
             'in_A': (intbv(0)[8:], PortDirection.input, 'Op1'),
             'in_B': (intbv(0)[8:], PortDirection.input, 'Op2'),
-            'output': (intbv(0)[8:], PortDirection.output, 'res')}
+            'output': (intbv(0)[8:], PortDirection.output, 'Res')}
 
         config = {'c_size': '8',
                   'c_operation': 'or'}
