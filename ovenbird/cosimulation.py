@@ -366,13 +366,13 @@ def _vivado_generic_cosimulation(
 
         out, err = vivado_process.communicate()
 
-        if err != '':
+        if err != b'':
             if target_language == 'VHDL':
                 xvhdl_log_filename = os.path.join(
                     tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1',
                     'behav', 'xvhdl.log')
 
-                if xvhdl_log_filename in err:
+                if xvhdl_log_filename.encode() in err:
                     with open(xvhdl_log_filename, 'r') as log_file:
                         err += '\n'
                         err += 'xvhdl.log:\n'
@@ -386,7 +386,7 @@ def _vivado_generic_cosimulation(
                     tmp_dir, 'tmp_project', 'tmp_project.sim', 'sim_1',
                     'behav', 'xvlog.log')
 
-                if xvhdl_log_filename in err:
+                if xvhdl_log_filename.encode() in err:
                     with open(xvhdl_log_filename, 'r') as log_file:
                         err += '\n'
                         err += 'xvlog.log:\n'
