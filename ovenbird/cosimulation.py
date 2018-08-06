@@ -1,6 +1,6 @@
 
 from veriutils import SynchronousTest
-from veriutils.cosimulation import PERIOD
+import veriutils.cosimulation
 
 import ovenbird
 
@@ -103,6 +103,9 @@ def _vivado_generic_cosimulation(
 
     if ovenbird.VIVADO_EXECUTABLE is None:
         raise EnvironmentError('Vivado executable not in path')
+
+    if period is None:
+        period = veriutils.cosimulation.PERIOD
 
     config = RawConfigParser()
     config.read(config_file)
@@ -581,7 +584,7 @@ def _vivado_generic_cosimulation(
 
 def vivado_vhdl_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
-    period=PERIOD, custom_sources=None, keep_temp_files=False,
+    period=None, custom_sources=None, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using VHDL as the intermediate language.
@@ -610,7 +613,7 @@ def vivado_vhdl_cosimulation(
 
 def vivado_verilog_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
-    period=PERIOD, custom_sources=None, keep_temp_files=False,
+    period=None, custom_sources=None, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using Verilog as the intermediate language.
