@@ -55,7 +55,7 @@ close_project
 
 _vcd_capture_template = string.Template('''
 restart
-open_vcd ${vcd_filename}
+open_vcd {${vcd_filename}}
 log_vcd
 run ${time}ns
 close_vcd
@@ -99,7 +99,7 @@ class VivadoError(RuntimeError):
 def _vivado_generic_cosimulation(
     target_language, cycles, dut_factory, ref_factory, args,
     arg_types, period, custom_sources, keep_temp_files, config_file,
-    template_path_prefix, vcd_name):
+    template_path_prefix, vcd_name, timescale):
 
     if ovenbird.VIVADO_EXECUTABLE is None:
         raise EnvironmentError('Vivado executable not in path')
@@ -113,7 +113,8 @@ def _vivado_generic_cosimulation(
     sim_object = SynchronousTest(dut_factory, ref_factory, args, arg_types,
                                  period, custom_sources)
     # We need to create the test data
-    myhdl_outputs = sim_object.cosimulate(cycles, vcd_name=vcd_name)
+    myhdl_outputs = sim_object.cosimulate(
+        cycles, vcd_name=vcd_name, timescale=timescale)
 
     # StopSimulation might be been called, so we should handle that.
     # Use the ref outputs, as that can't be None
@@ -290,7 +291,12 @@ def _vivado_generic_cosimulation(
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter('always', myhdl.ToVerilogWarning)
                 try:
-                    convertible_top.convert(hdl='Verilog', path=tmp_dir)
+                    if timescale is not None:
+                        convertible_top.convert(
+                            hdl='Verilog', path=tmp_dir, timescale=timescale)
+                    else:
+                        convertible_top.convert(hdl='Verilog', path=tmp_dir)
+
                 except myhdl.ConversionError as e:
 
                     raise ovenbird.OvenbirdConversionError(
@@ -585,7 +591,8 @@ def _vivado_generic_cosimulation(
 def vivado_vhdl_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
     period=None, custom_sources=None, keep_temp_files=False,
-    config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
+    config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
+    timescale=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using VHDL as the intermediate language.
 
@@ -607,14 +614,15 @@ def vivado_vhdl_cosimulation(
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources, keep_temp_files,
-        config_file, template_path_prefix, vcd_name)
+        config_file, template_path_prefix, vcd_name, timescale)
 
     return dut_outputs, ref_outputs
 
 def vivado_verilog_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
     period=None, custom_sources=None, keep_temp_files=False,
-    config_file='veriutils.cfg', template_path_prefix='', vcd_name=None):
+    config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
+    timescale=None):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using Verilog as the intermediate language.
 
@@ -636,7 +644,7 @@ def vivado_verilog_cosimulation(
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources, keep_temp_files,
-        config_file, template_path_prefix, vcd_name)
+        config_file, template_path_prefix, vcd_name, timescale)
 
     return dut_outputs, ref_outputs
 
