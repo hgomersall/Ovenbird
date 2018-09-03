@@ -55,7 +55,7 @@ close_project
 
 _vcd_capture_template = string.Template('''
 restart
-open_vcd ${vcd_filename}
+open_vcd {${vcd_filename}}
 log_vcd
 run ${time}ns
 close_vcd
