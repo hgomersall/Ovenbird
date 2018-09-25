@@ -50,11 +50,11 @@ class HDLTestCase(TestCase):
         self.default_args = {}
 
     def do_port_check_intbv_test(self, constructor, port_name, width=None,
-                                 signed=False, val_range=None, 
+                                 signed=False, val_range=None,
                                  attribute=None):
-        '''Checks the intbv port test was performed on the specified port 
+        '''Checks the intbv port test was performed on the specified port
         with the given port name and width. If attribute is not None,
-        then the specified attribute on the given port name is used (e.g. 
+        then the specified attribute on the given port name is used (e.g.
         for interfaces).
         '''
         if attribute is None:
@@ -84,7 +84,7 @@ class HDLTestCase(TestCase):
 
 
     def do_port_check_bool_test(self, constructor, port_name):
-        '''Checks the bool port test was performed on the specified port 
+        '''Checks the bool port test was performed on the specified port
         with the given port name.
         '''
         port_to_check = self.default_args[port_name]
@@ -97,8 +97,8 @@ class HDLTestCase(TestCase):
             self.assertIn(call(port_to_check, port_name),
                           mock_check_function.call_args_list)
 
-    def do_port_check_reset_test(self, constructor, port_name, active, async):
-        '''Checks the reset port test was performed on the specified port 
+    def do_port_check_reset_test(self, constructor, port_name, active, isasync):
+        '''Checks the reset port test was performed on the specified port
         with the given port name.
         '''
         port_to_check = self.default_args[port_name]
@@ -109,7 +109,7 @@ class HDLTestCase(TestCase):
             # Make the call
             constructor(**self.default_args)
             self.assertIn(call(port_to_check, port_name, active=active,
-                               async=async),
+                               isasync=isasync),
                           mock_check_function.call_args_list)
 
 

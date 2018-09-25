@@ -34,7 +34,7 @@ class DSP48E1TestCase(HDLTestCase):
 
         self.clock = Signal(bool(1))
         self.clock_enable = Signal(bool(1))
-        self.reset = ResetSignal(bool(0), active=1, async=False)
+        self.reset = ResetSignal(bool(0), active=1, isasync=False)
 
         self.A, self.a_min, self.a_max = (
             get_signed_intbv_rand_signal(self.len_A))
@@ -142,7 +142,7 @@ class TestDSP48E1Interface(DSP48E1TestCase):
 
         Anything else should raise a ValueError.
         '''
-        self.do_port_check_reset_test(DSP48E1, 'reset', active=1, async=False)
+        self.do_port_check_reset_test(DSP48E1, 'reset', active=1, isasync=False)
 
 class TestDSP48E1Simulation(DSP48E1TestCase):
     '''The DSP48E1 slice should implement various bits of functionality that
@@ -525,7 +525,7 @@ class TestDSP48E1Simulation(DSP48E1TestCase):
 
         @block
         def custom_reset_source(driven_reset, clock):
-            dummy_reset = ResetSignal(bool(0), active=1, async=False)
+            dummy_reset = ResetSignal(bool(0), active=1, isasync=False)
 
             @instance
             def custom_reset():

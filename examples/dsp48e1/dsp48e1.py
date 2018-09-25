@@ -180,7 +180,7 @@ def DSP48E1(A, B, C, P, opmode, clock_enable, reset, clock):
     check_intbv_signal(opmode, 'opmode', val_range=(0, N_DSP48E1_OPMODES))
     check_bool_signal(clock_enable, 'clock_enable')
     check_bool_signal(clock, 'clock')
-    check_reset_signal(reset, 'reset', active=1, async=False)
+    check_reset_signal(reset, 'reset', active=1, isasync=False)
 
     out_len = 48
     max_out = 2**(out_len - 1) - 1 # one bit for the sign
