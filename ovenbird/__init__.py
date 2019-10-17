@@ -8,8 +8,11 @@ if VIVADO_EXECUTABLE is not None:
         [VIVADO_EXECUTABLE, '-version'], stdin=_subprocess.PIPE,
         stdout=_subprocess.PIPE, stderr=_subprocess.PIPE)
 
-    out, err = vivado_version_exe.communicate()
-    VIVADO_VERSION = (out.split()[1][1:]).decode('utf8')
+    try:
+        out, err = vivado_version_exe.communicate()
+        VIVADO_VERSION = (out.split()[1][1:]).decode('utf8')
+    except IndexError:
+        VIVADO_VERSION = None
 
 else:
     VIVADO_VERSION = None
