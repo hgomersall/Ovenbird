@@ -1,6 +1,5 @@
 from tests.base_hdl_test import TestCase
 
-from veriutils import *
 from myhdl import (intbv, modbv, enum, Signal, ResetSignal, instance,
                    delay, always, always_seq, Simulation, StopSimulation,
                    always_comb, block, BlockError, ConversionError,

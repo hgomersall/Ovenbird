@@ -9,6 +9,8 @@ import myhdl
 from myhdl.conversion._toVHDL import _shortversion
 myhdl_vhdl_package_filename = "pck_myhdl_%s.vhd" % _shortversion
 
+from collections import deque
+
 import tempfile
 import os
 import string
@@ -540,7 +542,7 @@ def _vivado_generic_cosimulation(
         # Now extract the axi signals
         for each_signal in ref_outputs:
 
-            packets = []
+            completed_packets = {}
             if arg_types[each_signal] == 'axi_stream_out':
                 axi_out_filename = os.path.join(
                     tmp_dir, 'axi_stream_out' + '_' + each_signal)
@@ -550,18 +552,49 @@ def _vivado_generic_cosimulation(
                         axi_out_file, delimiter=',')
                     vivado_axi_packet = [row for row in axi_packet_reader]
 
-                packet = []
+                current_packets = {}
                 for transaction in vivado_axi_packet:
-                    packet.append(int(transaction['TDATA'], 2))
+
+                    if 'TID' in transaction.keys():
+                        stream_id = int(transaction['TID'], 2)
+                    else:
+                        stream_id = 0
+
+                    if 'TDEST' in transaction.keys():
+                        stream_dest = int(transaction['TDEST'], 2)
+                    else:
+                        stream_dest = 0
+
+                    stream = (stream_id, stream_dest)
+                    if stream not in current_packets.keys():
+                        current_packets[stream] = deque([])
+
+                    current_packets[stream].append(
+                        int(transaction['TDATA'], 2))
                     try:
                         if int(transaction['TLAST']):
-                            packets.append(packet)
-                            packet = []
+
+                            if stream not in completed_packets.keys():
+                                completed_packets[stream] = deque([])
+
+                            completed_packets[stream].append(
+                                current_packets[stream])
+
+                            del(current_packets[stream])
                     except KeyError:
                         pass
 
-                dut_outputs[each_signal]['packets'] = packets
-                dut_outputs[each_signal]['incomplete_packet'] = packet
+                for stream in completed_packets.keys():
+                    if len(completed_packets[stream]) == 0:
+                        del(completed_packets[stream])
+
+                for stream in current_packets.keys():
+                    if len(current_packets[stream]) == 0:
+                        del(current_packets[stream])
+
+                dut_outputs[each_signal]['packets'] = completed_packets
+                dut_outputs[each_signal]['incomplete_packet'] = (
+                    current_packets)
 
         for each_signal in ref_outputs:
             # Now only output the correct number of cycles
