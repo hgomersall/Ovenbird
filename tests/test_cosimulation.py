@@ -17,8 +17,6 @@ import shutil
 
 import mock
 
-from veriutils import SynchronousTest, myhdl_cosimulation, random_source
-
 from veriutils.tests.test_convertible import ConvertibleCodeTestsMixin
 
 from ovenbird import (
@@ -103,6 +101,7 @@ class VivadoCosimulationFunctionTests(ConvertibleCodeTestsMixin):
         '''Conversion warnings should include a reference to the correct port
         name (not just the internal MyHDL name)
         '''
+
         @block
         def convertible_block(
             clock, input_signal, output_signal, test_signal2):
@@ -128,6 +127,7 @@ class VivadoCosimulationFunctionTests(ConvertibleCodeTestsMixin):
                                     args, arg_types)
 
             self.assertTrue('test_signal2' in str(w[0].message))
+
 
         arg_types['test_signal2'] = 'output'
 
@@ -278,7 +278,7 @@ class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests,
                            args, arg_types, **kwargs):
 
         return vivado_verilog_cosimulation(
-            sim_cycles, dut_factory, ref_factory, args, arg_types, **kwargs)
+            sim_cycles, dut_factory, ref_factory, args, arg_types, keep_temp_files=True, **kwargs)
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
                      'Vivado executable not in path')

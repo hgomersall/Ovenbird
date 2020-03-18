@@ -1,5 +1,5 @@
 
-from veriutils import SynchronousTest
+from veriutils import SynchronousTest, AxiStreamOutput, SignalOutput
 import veriutils.cosimulation
 
 import ovenbird
@@ -100,7 +100,8 @@ class VivadoError(RuntimeError):
 
 def _vivado_generic_cosimulation(
     target_language, cycles, dut_factory, ref_factory, args,
-    arg_types, period, custom_sources, keep_temp_files, config_file,
+    arg_types, period, custom_sources,
+    enforce_convertible_top_level_interfaces, keep_temp_files, config_file,
     template_path_prefix, vcd_name, timescale):
 
     if ovenbird.VIVADO_EXECUTABLE is None:
@@ -112,36 +113,55 @@ def _vivado_generic_cosimulation(
     config = RawConfigParser()
     config.read(config_file)
 
-    sim_object = SynchronousTest(dut_factory, ref_factory, args, arg_types,
-                                 period, custom_sources)
+    sim_object = SynchronousTest(
+        dut_factory, ref_factory, args, arg_types, period, custom_sources,
+        enforce_convertible_top_level_interfaces)
+
     # We need to create the test data
     myhdl_outputs = sim_object.cosimulate(
         cycles, vcd_name=vcd_name, timescale=timescale)
+
+
+    # Most of the dut outputs will be the same as ref, we then overwrite
+    # the others from the written file.
+    dut_outputs = copy.deepcopy(myhdl_outputs[1])
+    ref_outputs = myhdl_outputs[1]
 
     # StopSimulation might be been called, so we should handle that.
     # Use the ref outputs, as that can't be None
     # outputs_length is the number of cycles we use for the vivado
     # cosimulation
     outputs_length = None
-    for each_signal in myhdl_outputs[1]:
-        # axi_stream args should be split up before checking
-        if arg_types[each_signal] == 'axi_stream_out':
-            signal_output = myhdl_outputs[1][each_signal]['signals']
-        else:
-            signal_output = myhdl_outputs[1][each_signal]
+    for each_signal in ref_outputs:
 
-        _length = len(signal_output)
+        if not isinstance(ref_outputs[each_signal], SignalOutput):
+            # We remove non signal-specific outputs from dut_outputs and
+            # continue. These are things that should be added back in again.
+            del dut_outputs[each_signal]
+            continue
+
+        if sim_object.elaborated_args[each_signal].type == 'output':
+            # We also delete outputs which again should be added back in
+            del dut_outputs[each_signal]
+
+        _length = len(ref_outputs[each_signal])
 
         if outputs_length is not None:
             assert outputs_length == _length
 
         outputs_length = _length
 
+    assert outputs_length is not None
+
     # One cycle is lost in the vivado simulation for the propagation
     # delay between reading and writing.
     _cycles = outputs_length + 1
 
+    # FIXME
     tmp_dir = tempfile.mkdtemp()
+    #tmp_dir = '/tmp/tmpdecqrb_0'
+    signal_output_filename = 'signal_outputs'
+    signal_output_path = os.path.join(tmp_dir, signal_output_filename)
 
     try:
         project_name = 'tmp_project'
@@ -200,9 +220,8 @@ def _vivado_generic_cosimulation(
             vhdl_files += vhdl_dependencies + vhdl_dut_files
 
             # Generate the output VHDL files
-            signal_output_filename = os.path.join(tmp_dir, 'signal_outputs')
             convertible_top = sim_object.dut_convertible_top(
-                tmp_dir, signal_output_filename='signal_outputs',
+                tmp_dir, signal_output_filename=signal_output_filename,
                 axi_stream_packets_filename_prefix='axi_stream_out')
 
             ip_list = set(_populate_vivado_ip_list(convertible_top, 'VHDL'))
@@ -278,9 +297,8 @@ def _vivado_generic_cosimulation(
             verilog_files += verilog_dependencies + verilog_dut_files
 
             # Generate the output Verilog files
-            signal_output_filename = os.path.join(tmp_dir, 'signal_outputs')
             convertible_top = sim_object.dut_convertible_top(
-                tmp_dir, signal_output_filename='signal_outputs',
+                tmp_dir, signal_output_filename=signal_output_filename,
                 axi_stream_packets_filename_prefix='axi_stream_out')
 
             ip_list = set(_populate_vivado_ip_list(convertible_top, 'Verilog'))
@@ -406,15 +424,10 @@ def _vivado_generic_cosimulation(
                 raise VivadoError(
                     'Error running the Vivado Verilog simulator:\n%s' % err)
 
-        with open(signal_output_filename, 'r') as signal_output_file:
+        with open(signal_output_path, 'r') as signal_output_file:
             signal_reader = csv.DictReader(signal_output_file, delimiter=',')
 
             vivado_signals = [row for row in signal_reader]
-
-        # Most of the dut outputs will be the same as ref, we then overwrite
-        # the others from the written file.
-        dut_outputs = copy.copy(sim_object.outputs[1])
-        ref_outputs = sim_object.outputs[1]
 
         vivado_signal_keys = vivado_signals[0].keys()
 
@@ -456,162 +469,217 @@ def _vivado_generic_cosimulation(
 
                 each_dut_outputs.append(each_value)
 
-            # add each per-signal list into a data structure that
-            # can be easily turned into the correct output when it is not
-            # possible to add it directly.
-            if sig_container == 'interface':
-                output_name_list = each_signal.split('.')
+            dut_outputs[each_signal] = each_dut_outputs
 
-                # We have an interface, so group the recorded signals
-                # of the interface together.
-
-                # FIXME Only one level of interface supported
-                interface_outputs.setdefault(
-                    output_name_list[0], {})[output_name_list[1]] = (
-                        each_dut_outputs)
-
-            elif sig_container == 'list':
-                # We have a list
-                parsed_header = re.search(
-                    '(?P<list_name>.*)\[(?P<index>.*)\]', each_signal)
-
-                siglist_name = parsed_header.group('list_name')
-                siglist_index = int(parsed_header.group('index'))
-
-                siglist_outputs.setdefault(
-                    siglist_name, {})[siglist_index] = each_dut_outputs
-
-            else:
-                # We have a normal signal
-                dut_outputs[each_signal] = each_dut_outputs
+#            # add each per-signal list into a data structure that
+#            # can be easily turned into the correct output when it is not
+#            # possible to add it directly.
+#            if sig_container == 'interface':
+#                output_name_list = each_signal.split('.')
+#
+#                # We have an interface, so group the recorded signals
+#                # of the interface together.
+#
+#                # FIXME Only one level of interface supported
+#                interface_outputs.setdefault(
+#                    output_name_list[0], {})[output_name_list[1]] = (
+#                        each_dut_outputs)
+#
+#            elif sig_container == 'list':
+#                # We have a list
+#                parsed_header = re.search(
+#                    '(?P<list_name>.*)\[(?P<index>.*)\]', each_signal)
+#
+#                siglist_name = parsed_header.group('list_name')
+#                siglist_index = int(parsed_header.group('index'))
+#
+#                siglist_outputs.setdefault(
+#                    siglist_name, {})[siglist_index] = each_dut_outputs
+#
+#            else:
+#                # We have a normal signal
+#                dut_outputs[each_signal] = each_dut_outputs
 
         # Now convert the data structures into suitable outputs.
 
-        for each_siglist in siglist_outputs:
-
-            # Order the values by the siglist_index
-            ordered_siglist_output = collections.OrderedDict(sorted(
-                siglist_outputs[each_siglist].items(), key=lambda t: t[0]))
-
-            new_dut_output = []
-
-            for each_list_out in zip(*ordered_siglist_output.values()):
-                new_dut_output.append(list(each_list_out))
-
-            dut_outputs[each_siglist] = new_dut_output
-
-        for each_interface in interface_outputs:
-
-            signal_type = arg_types[each_interface]
-
-            attr_names = interface_outputs[each_interface].keys()
-
-            reordered_interface_outputs =  zip(
-                *(interface_outputs[each_interface][key] for
-                  key in attr_names))
-
-            # We need to write the interface values to dut_outputs, but
-            # taking the values from ref_outputs if the interface signal was
-            # not an output.
-            new_dut_output = []
-
-            if signal_type == 'axi_stream_out':
-                for ref_output, simulated_output in zip(
-                    dut_outputs[each_interface]['signals'],
-                    reordered_interface_outputs):
-
-                    new_interface_out = ref_output.copy()
-                    new_interface_out.update(
-                        dict(zip(attr_names, simulated_output)))
-
-                    new_dut_output.append(new_interface_out)
-
-                    dut_outputs[each_interface] = {'signals': new_dut_output}
-            else:
-                for ref_output, simulated_output in zip(
-                    dut_outputs[each_interface], reordered_interface_outputs):
-
-                    new_interface_out = ref_output.copy()
-                    new_interface_out.update(
-                        dict(zip(attr_names, simulated_output)))
-
-                    new_dut_output.append(new_interface_out)
-
-                    dut_outputs[each_interface] = new_dut_output
+#        for each_siglist in siglist_outputs:
+#
+#            # Order the values by the siglist_index
+#            ordered_siglist_output = collections.OrderedDict(sorted(
+#                siglist_outputs[each_siglist].items(), key=lambda t: t[0]))
+#
+#            new_dut_output = []
+#
+#            for each_list_out in zip(*ordered_siglist_output.values()):
+#                new_dut_output.append(list(each_list_out))
+#
+#            dut_outputs[each_siglist] = new_dut_output
+#
+#        for each_interface in interface_outputs:
+#
+#            signal_type = arg_types[each_interface]
+#
+#            attr_names = interface_outputs[each_interface].keys()
+#
+#            reordered_interface_outputs =  zip(
+#                *(interface_outputs[each_interface][key] for
+#                  key in attr_names))
+#
+#            # We need to write the interface values to dut_outputs, but
+#            # taking the values from ref_outputs if the interface signal was
+#            # not an output.
+#            new_dut_output = []
+#
+#            if signal_type == 'axi_stream_out':
+#                for ref_output, simulated_output in zip(
+#                    ref_outputs[each_interface]['signals'],
+#                    reordered_interface_outputs):
+#
+#                    new_interface_out = ref_output.copy()
+#                    new_interface_out.update(
+#                        dict(zip(attr_names, simulated_output)))
+#
+#                    new_dut_output.append(new_interface_out)
+#
+#                    dut_outputs[each_interface] = {'signals': new_dut_output}
+#            else:
+#                for ref_output, simulated_output in zip(
+#                    ref_outputs[each_interface], reordered_interface_outputs):
+#
+#                    new_interface_out = ref_output.copy()
+#                    new_interface_out.update(
+#                        dict(zip(attr_names, simulated_output)))
+#
+#                    new_dut_output.append(new_interface_out)
+#
+#                    dut_outputs[each_interface] = new_dut_output
 
         # Now extract the axi signals
-        for each_signal in ref_outputs:
+        for each_interface in (
+            sim_object.elaborated_args.axi_stream_out_interfaces):
 
             completed_packets = {}
-            if arg_types[each_signal] == 'axi_stream_out':
-                axi_out_filename = os.path.join(
-                    tmp_dir, 'axi_stream_out' + '_' + each_signal)
 
-                with open(axi_out_filename, 'r') as axi_out_file:
-                    axi_packet_reader = csv.DictReader(
-                        axi_out_file, delimiter=',')
-                    vivado_axi_packet = [row for row in axi_packet_reader]
+            axi_out_filename = os.path.join(
+                tmp_dir, 'axi_stream_out' + '_' + each_interface)
 
-                current_packets = {}
-                for transaction in vivado_axi_packet:
+            with open(axi_out_filename, 'r') as axi_out_file:
+                axi_packet_reader = csv.DictReader(
+                    axi_out_file, delimiter=',')
+                vivado_axi_packet = [row for row in axi_packet_reader]
 
-                    if 'TID' in transaction.keys():
-                        stream_id = int(transaction['TID'], 2)
-                    else:
-                        stream_id = 0
+            current_packets = {}
+            for transaction in vivado_axi_packet:
 
-                    if 'TDEST' in transaction.keys():
-                        stream_dest = int(transaction['TDEST'], 2)
-                    else:
-                        stream_dest = 0
+                if 'TID' in transaction.keys():
+                    stream_id = int(transaction['TID'], 2)
+                else:
+                    stream_id = 0
 
-                    stream = (stream_id, stream_dest)
-                    if stream not in current_packets.keys():
-                        current_packets[stream] = deque([])
+                if 'TDEST' in transaction.keys():
+                    stream_dest = int(transaction['TDEST'], 2)
+                else:
+                    stream_dest = 0
 
-                    current_packets[stream].append(
-                        int(transaction['TDATA'], 2))
-                    try:
-                        if int(transaction['TLAST']):
+                stream = (stream_id, stream_dest)
+                if stream not in current_packets.keys():
+                    current_packets[stream] = deque([])
 
-                            if stream not in completed_packets.keys():
-                                completed_packets[stream] = deque([])
+                current_packets[stream].append(
+                    int(transaction['TDATA'], 2))
+                try:
+                    if int(transaction['TLAST']):
 
-                            completed_packets[stream].append(
-                                current_packets[stream])
+                        if stream not in completed_packets.keys():
+                            completed_packets[stream] = deque([])
 
-                            del(current_packets[stream])
-                    except KeyError:
-                        pass
+                        completed_packets[stream].append(
+                            current_packets[stream])
 
-                for stream in completed_packets.keys():
-                    if len(completed_packets[stream]) == 0:
-                        del(completed_packets[stream])
-
-                for stream in current_packets.keys():
-                    if len(current_packets[stream]) == 0:
                         del(current_packets[stream])
+                except KeyError:
+                    pass
 
-                dut_outputs[each_signal]['packets'] = completed_packets
-                dut_outputs[each_signal]['incomplete_packet'] = (
-                    current_packets)
+            for stream in completed_packets.keys():
+                if len(completed_packets[stream]) == 0:
+                    del(completed_packets[stream])
 
+            for stream in current_packets.keys():
+                if len(current_packets[stream]) == 0:
+                    del(current_packets[stream])
+
+            axi_signal_output = AxiStreamOutput({
+                'packets': completed_packets,
+                'incomplete_packet': current_packets})
+
+            dut_outputs[each_interface] = axi_signal_output
+
+#        for each_signal in ref_outputs:
+#
+#            completed_packets = {}
+#            if arg_types[each_signal] == 'axi_stream_out':
+#                axi_out_filename = os.path.join(
+#                    tmp_dir, 'axi_stream_out' + '_' + each_signal)
+#
+#                with open(axi_out_filename, 'r') as axi_out_file:
+#                    axi_packet_reader = csv.DictReader(
+#                        axi_out_file, delimiter=',')
+#                    vivado_axi_packet = [row for row in axi_packet_reader]
+#
+#                current_packets = {}
+#                for transaction in vivado_axi_packet:
+#
+#                    if 'TID' in transaction.keys():
+#                        stream_id = int(transaction['TID'], 2)
+#                    else:
+#                        stream_id = 0
+#
+#                    if 'TDEST' in transaction.keys():
+#                        stream_dest = int(transaction['TDEST'], 2)
+#                    else:
+#                        stream_dest = 0
+#
+#                    stream = (stream_id, stream_dest)
+#                    if stream not in current_packets.keys():
+#                        current_packets[stream] = deque([])
+#
+#                    current_packets[stream].append(
+#                        int(transaction['TDATA'], 2))
+#                    try:
+#                        if int(transaction['TLAST']):
+#
+#                            if stream not in completed_packets.keys():
+#                                completed_packets[stream] = deque([])
+#
+#                            completed_packets[stream].append(
+#                                current_packets[stream])
+#
+#                            del(current_packets[stream])
+#                    except KeyError:
+#                        pass
+#
+#                for stream in completed_packets.keys():
+#                    if len(completed_packets[stream]) == 0:
+#                        del(completed_packets[stream])
+#
+#                for stream in current_packets.keys():
+#                    if len(current_packets[stream]) == 0:
+#                        del(current_packets[stream])
+#
+#                dut_outputs[each_signal]['packets'] = completed_packets
+#                dut_outputs[each_signal]['incomplete_packet'] = (
+#                    current_packets)
         for each_signal in ref_outputs:
-            # Now only output the correct number of cycles
+            if not isinstance(ref_outputs[each_signal], SignalOutput):
+                continue
 
-            if arg_types[each_signal] == 'axi_stream_out':
-                ref_outputs[each_signal]['signals'] = (
-                    ref_outputs[each_signal]['signals'][:outputs_length])
-                dut_outputs[each_signal]['signals'] = (
-                    dut_outputs[each_signal]['signals'][:outputs_length])
-            else:
-                ref_outputs[each_signal] = (
-                    ref_outputs[each_signal][:outputs_length])
-                dut_outputs[each_signal] = (
-                    dut_outputs[each_signal][:outputs_length])
+            # Now only output the correct number of cycles
+            ref_outputs[each_signal] = (
+                ref_outputs[each_signal][:outputs_length])
+            dut_outputs[each_signal] = (
+                dut_outputs[each_signal][:outputs_length])
 
     finally:
-
         if not keep_temp_files:
             shutil.rmtree(tmp_dir)
         else:
@@ -623,7 +691,8 @@ def _vivado_generic_cosimulation(
 
 def vivado_vhdl_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
-    period=None, custom_sources=None, keep_temp_files=False,
+    period=None, custom_sources=None,
+    enforce_convertible_top_level_interfaces=True, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
     timescale=None):
     '''Run a cosimulation in which the device under test is simulated inside
@@ -646,14 +715,16 @@ def vivado_vhdl_cosimulation(
 
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
-        arg_types, period, custom_sources, keep_temp_files,
+        arg_types, period, custom_sources,
+        enforce_convertible_top_level_interfaces, keep_temp_files,
         config_file, template_path_prefix, vcd_name, timescale)
 
     return dut_outputs, ref_outputs
 
 def vivado_verilog_cosimulation(
     cycles, dut_factory, ref_factory, args, arg_types,
-    period=None, custom_sources=None, keep_temp_files=False,
+    period=None, custom_sources=None,
+    enforce_convertible_top_level_interfaces=True, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
     timescale=None):
     '''Run a cosimulation in which the device under test is simulated inside
@@ -676,7 +747,8 @@ def vivado_verilog_cosimulation(
 
     dut_outputs, ref_outputs = _vivado_generic_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
-        arg_types, period, custom_sources, keep_temp_files,
+        arg_types, period, custom_sources,
+        enforce_convertible_top_level_interfaces, keep_temp_files,
         config_file, template_path_prefix, vcd_name, timescale)
 
     return dut_outputs, ref_outputs
