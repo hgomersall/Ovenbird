@@ -36,7 +36,7 @@ both standalone (`dsp48e1.py`) and as part of a hierarchy
 In order to use Vivado, it is necessary to set up your environment. Under
 linux, this is something like:
 
-    source /opt/Xilinx/Vivado/2015.4/settings64.sh
+    source /opt/Xilinx/Vivado/2019.2/settings64.sh
 
 I imagine there's something similar under Windows (though I've not tested it).
 
@@ -50,8 +50,8 @@ An example one is provided. The need for `veriutils.cfg` will likely be
 removed in subsequent releases (much of the need for it has been removed
 in the creation of Ovenbird).
 
-Ovenbird depends on the MyHDL initial value support, which is currently 
-(2/5/2016) as a [PR](https://github.com/jandecaluwe/myhdl/pull/150).
+Ovenbird depends on the MyHDL initial value support, which is now part of 
+MyHDL master.
 
 The code is released under the BSD 3 clause license. See License.txt for the 
 text of this.
