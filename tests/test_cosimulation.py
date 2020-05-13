@@ -17,6 +17,7 @@ import shutil
 
 import mock
 
+from veriutils import AVAILABLE_TIME_UNITS
 from veriutils.tests.test_convertible import ConvertibleCodeTestsMixin
 
 from ovenbird import (
@@ -242,6 +243,23 @@ class TestVivadoVHDLCosimulationFunction(VivadoCosimulationFunctionTests,
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
                      'Vivado executable not in path')
+    def test_invalid_time_unit(self):
+        '''Passing something that is not a time unit should raise a ValueError
+        '''
+        invalid_time_unit = 'A string'
+        sim_cycles = 10
+
+        self.assertRaisesRegex(
+            ValueError,
+            ('Invalid time unit. Please select from: ' +
+             ', '.join(AVAILABLE_TIME_UNITS)),
+            self.vivado_sim_wrapper, sim_cycles,
+            self.identity_factory, self.identity_factory,
+            self.default_args, self.default_arg_types,
+            time_units=invalid_time_unit)
+
+    @unittest.skipIf(VIVADO_EXECUTABLE is None,
+                     'Vivado executable not in path')
     def test_missing_hdl_file_raises(self):
         '''An EnvironmentError should be raised for a missing HDL file.
 
@@ -277,8 +295,33 @@ class TestVivadoVerilogCosimulationFunction(VivadoCosimulationFunctionTests,
     def vivado_sim_wrapper(self, sim_cycles, dut_factory, ref_factory,
                            args, arg_types, **kwargs):
 
+        try:
+            # We always set keep_temp_files in the call to
+            # vivado_verilog_cosimulation so remove it if the calling test has
+            # included it in the kwargs.
+            del kwargs['keep_temp_files']
+        except KeyError:
+            pass
+
         return vivado_verilog_cosimulation(
             sim_cycles, dut_factory, ref_factory, args, arg_types, keep_temp_files=True, **kwargs)
+
+    @unittest.skipIf(VIVADO_EXECUTABLE is None,
+                     'Vivado executable not in path')
+    def test_invalid_time_unit(self):
+        '''Passing something that is not a time unit should raise a ValueError
+        '''
+        invalid_time_unit = 'A string'
+        sim_cycles = 10
+
+        self.assertRaisesRegex(
+            ValueError,
+            ('Invalid time unit. Please select from: ' +
+             ', '.join(AVAILABLE_TIME_UNITS)),
+            self.vivado_sim_wrapper, sim_cycles,
+            self.identity_factory, self.identity_factory,
+            self.default_args, self.default_arg_types,
+            time_units=invalid_time_unit)
 
     @unittest.skipIf(VIVADO_EXECUTABLE is None,
                      'Vivado executable not in path')

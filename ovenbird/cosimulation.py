@@ -1,5 +1,6 @@
 
-from veriutils import SynchronousTest, AxiStreamOutput, SignalOutput
+from veriutils import (
+    SynchronousTest, AxiStreamOutput, SignalOutput, AVAILABLE_TIME_UNITS)
 import veriutils.cosimulation
 
 import ovenbird
@@ -48,7 +49,7 @@ if {[string length [get_files {$vhdl_files}]] != 0} {
 
 update_compile_order -fileset sources_1
 update_compile_order -fileset sim_1
-set_property -name {xsim.simulate.runtime} -value {${time}ns} -objects [current_fileset -simset]
+set_property -name {xsim.simulate.runtime} -value {${time}${time_units}} -objects [current_fileset -simset]
 launch_simulation
 $vcd_capture_script
 close_sim
@@ -59,7 +60,7 @@ _vcd_capture_template = string.Template('''
 restart
 open_vcd {${vcd_filename}}
 log_vcd
-run ${time}ns
+run ${time}${time_units}
 close_vcd
 ''')
 
@@ -102,7 +103,7 @@ def _vivado_generic_cosimulation(
     target_language, cycles, dut_factory, ref_factory, args,
     arg_types, period, custom_sources,
     enforce_convertible_top_level_interfaces, keep_temp_files, config_file,
-    template_path_prefix, vcd_name, timescale):
+    template_path_prefix, vcd_name, time_units):
 
     if ovenbird.VIVADO_EXECUTABLE is None:
         raise EnvironmentError('Vivado executable not in path')
@@ -110,16 +111,20 @@ def _vivado_generic_cosimulation(
     if period is None:
         period = veriutils.cosimulation.PERIOD
 
+    if time_units not in AVAILABLE_TIME_UNITS:
+        raise ValueError(
+            'Invalid time unit. Please select from: ' +
+            ', '.join(AVAILABLE_TIME_UNITS))
+
     config = RawConfigParser()
     config.read(config_file)
 
     sim_object = SynchronousTest(
         dut_factory, ref_factory, args, arg_types, period, custom_sources,
-        enforce_convertible_top_level_interfaces)
+        enforce_convertible_top_level_interfaces, time_units=time_units)
 
     # We need to create the test data
-    myhdl_outputs = sim_object.cosimulate(
-        cycles, vcd_name=vcd_name, timescale=timescale)
+    myhdl_outputs = sim_object.cosimulate(cycles, vcd_name=vcd_name)
 
 
     # Most of the dut outputs will be the same as ref, we then overwrite
@@ -199,7 +204,8 @@ def _vivado_generic_cosimulation(
             vcd_filename = os.path.realpath(vcd_name + '.vivado.vcd')
             vcd_capture_script = _vcd_capture_template.safe_substitute(
                 {'vcd_filename': vcd_filename,
-                 'time': time})
+                 'time': time,
+                 'time_units': time_units,})
 
         else:
             vcd_capture_script = ''
@@ -310,12 +316,14 @@ def _vivado_generic_cosimulation(
 
             with warnings.catch_warnings(record=True) as w:
                 warnings.simplefilter('always', myhdl.ToVerilogWarning)
+
+                # Generate the appropriate timescale based on the time_units.
+                # This is in the form '1ns/1ns' (when time_units is ns).
+                timescale = '1' + str(time_units) + '/1' + str(time_units)
+
                 try:
-                    if timescale is not None:
-                        convertible_top.convert(
-                            hdl='Verilog', path=tmp_dir, timescale=timescale)
-                    else:
-                        convertible_top.convert(hdl='Verilog', path=tmp_dir)
+                    convertible_top.convert(
+                        hdl='Verilog', path=tmp_dir, timescale=timescale)
 
                 except myhdl.ConversionError as e:
 
@@ -376,7 +384,8 @@ def _vivado_generic_cosimulation(
             'vhdl_files': vhdl_files_string,
             'verilog_files': verilog_files_string,
             'ip_additional_hdl_files': ip_additional_hdl_files_string,
-            'vcd_capture_script': vcd_capture_script}
+            'vcd_capture_script': vcd_capture_script,
+            'time_units': time_units,}
 
         simulate_script = _simulate_tcl_template.safe_substitute(
             template_substitutions)
@@ -694,7 +703,7 @@ def vivado_vhdl_cosimulation(
     period=None, custom_sources=None,
     enforce_convertible_top_level_interfaces=True, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
-    timescale=None):
+    time_units='ns'):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using VHDL as the intermediate language.
 
@@ -717,7 +726,7 @@ def vivado_vhdl_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources,
         enforce_convertible_top_level_interfaces, keep_temp_files,
-        config_file, template_path_prefix, vcd_name, timescale)
+        config_file, template_path_prefix, vcd_name, time_units)
 
     return dut_outputs, ref_outputs
 
@@ -726,7 +735,7 @@ def vivado_verilog_cosimulation(
     period=None, custom_sources=None,
     enforce_convertible_top_level_interfaces=True, keep_temp_files=False,
     config_file='veriutils.cfg', template_path_prefix='', vcd_name=None,
-    timescale=None):
+    time_units='ns'):
     '''Run a cosimulation in which the device under test is simulated inside
     Vivado, using Verilog as the intermediate language.
 
@@ -749,7 +758,7 @@ def vivado_verilog_cosimulation(
         target_language, cycles, dut_factory, ref_factory, args,
         arg_types, period, custom_sources,
         enforce_convertible_top_level_interfaces, keep_temp_files,
-        config_file, template_path_prefix, vcd_name, timescale)
+        config_file, template_path_prefix, vcd_name, time_units)
 
     return dut_outputs, ref_outputs
 
